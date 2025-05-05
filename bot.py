@@ -5,8 +5,6 @@ import random
 from aiogram.filters.command import Command
 from aiogram import F
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command, Text
-from aiogram.utils import executor
 
 
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +29,7 @@ async def cmd_commands(message: types.Message):
 
 
 @dp.message(Command("note"))  # хэндлер на команду /note
-async def cmd_commands(message: types.Message):
+async def cmd_note(message: types.Message):
     f = open('notes.txt', encoding='utf-8')
     number = random.randrange(10)
     note = f.readlines()
@@ -57,13 +55,12 @@ async def save_message(user_id, username, message): # пытаемся сохр�
         await db.execute('INSERT INTO MESSAGES (user_id, username, message) VALUES (?, ?, ?)',
                             (user_id, username, message))
         await db.commit()
-    await save_message(user_id, username, message)
 
 
 async def on_startup(_):
     await account_db()
 
-@dp.message_handler(commands=["create"]) # предлагаем создать аккаунт, команда /create
+@dp.message(Command("create")) # предлагаем создать аккаунт, команда /create
 async def cmd_create(message: types.Message):
     keyb = [
         [types.KeyboardButton(text="давай")],
@@ -72,7 +69,7 @@ async def cmd_create(message: types.Message):
     keyboard = types.ReplyKeyboardMarkup(keyboard=keyb)
     await message.answer("хочешь создать аккаунт?", reply_markup=keyboard)
 
-@dp.message(Text('давай')) # отвечаем на согласие
+@dp.message(F.text('давай')) # отвечаем на согласие
 async def yappi(message: types.Message):
     userid = message.from_user.id
     username = message.from_user.username
@@ -80,14 +77,14 @@ async def yappi(message: types.Message):
     await message.answer('записал тебя в книжечку :)')
     await message.edit_reply_markup(reply_markup=None)
 
-@dp.message(Text('не сегодня')) # отвечаем на отказ
+@dp.message(F.text('не сегодня')) # отвечаем на отказ
 async def nope(message: types.Message):
     await message.answer('ну и пожалуйста, ну и не нужно :(')
     await message.edit_reply_markup(reply_markup=None)
 
 if __name__ == '__main__':
     dp.startup.register(on_startup)
-    executor.start_polling(dp)
+    Dispatcher.start_polling(dp)
 
 
 @dp.message(F.text)  # хэндлер на любой текст
