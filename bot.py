@@ -29,8 +29,8 @@ async def cmd_commands(message: types.Message):
     await message.answer("тут будет список команд, когда я чему-нибудь научусь :)")
 
 
-async def account_db(message: types.Message):
-    async with aiosqlite.connect('telegram_bot_messages.db') as db:
+async def account_db(message: types.Message): # создаем базу данных с сообщениями
+    async with aiosqlite.connect('user_messages.db') as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS MESSAGES (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,8 +43,8 @@ async def account_db(message: types.Message):
         await db.commit()
 
 
-async def save_message(user_id, username, message):
-    async with aiosqlite.connect('telegram_bot_messages.db') as db:
+async def save_message(user_id, username, message): # пытаемся сохранять сообщения и ПД юзеров
+    async with aiosqlite.connect('user_messages.db') as db:
         await db.execute('INSERT INTO MESSAGES (user_id, username, message) VALUES (?, ?, ?)',
                             (user_id, username, message))
         await db.commit()
@@ -54,8 +54,16 @@ async def save_message(user_id, username, message):
 async def on_startup(_):
     await account_db()
 
+@dp.message_handler(commands=["create"]) # предлагаем создать аккаунт, команда /create
+async def cmd_create(message: types.Message):
+    keyb = [
+        [types.KeyboardButton(text="давай")],
+        [types.KeyboardButton(text="не сегодня")]
+    ]
+    keyboard = types.ReplyKeyboardMarkup(keyboard=keyb)
+    await message.answer("хочешь создать аккаунт?", reply_markup=keyboard)
 
-@dp.message(Text('давай'))
+@dp.message(Text('давай')) # отвечаем на согласие
 async def yappi(message: types.Message):
     userid = message.from_user.id
     username = message.from_user.username
@@ -63,16 +71,10 @@ async def yappi(message: types.Message):
     await message.answer('записал тебя в книжечку :)')
     await message.edit_reply_markup(reply_markup=None)
 
-@dp.message(Text('не сегодня'))
+@dp.message(Text('не сегодня')) # отвечаем на отказ
 async def nope(message: types.Message):
     await message.answer('ну и пожалуйста, ну и не нужно :(')
     await message.edit_reply_markup(reply_markup=None)
-
-if __name__ == '__main__':
-    dp.startup.register(on_startup)
-    executor.start_polling(dp)
-
-
 
 if __name__ == '__main__':
     dp.startup.register(on_startup)
