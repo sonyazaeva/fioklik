@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from aiogram.filters.command import Command
 from aiogram import F
 from aiogram import Bot, Dispatcher, types
@@ -25,7 +26,15 @@ async def cmd_start(message: types.Message):
 
 @dp.message(Command("commands"))  # хэндлер на команду /commands
 async def cmd_commands(message: types.Message):
-    await message.answer("тут будет список команд, когда я чему-нибудь научусь :)")
+    await message.answer("по команде /note я пришлю тебе идею для заметки :)")
+
+
+@dp.message(Command("note"))  # хэндлер на команду /note
+async def cmd_commands(message: types.Message):
+    f = open('notes.txt', encoding='utf-8')
+    number = random.randrange(10)
+    note = f.readlines()
+    await message.answer("вот тебе идея для заметки:\n\n" + note[number])
 
 
 async def account_db(message: types.Message): # создаем базу данных с сообщениями
