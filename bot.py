@@ -36,7 +36,7 @@ async def cmd_note(message: types.Message):
     await message.answer("вот тебе идея для заметки:\n\n" + note[number])
 
 
-async def account_db(message: types.Message): # создаем базу данных с сообщениями
+async def account_db(): # создаем базу данных с сообщениями
     async with aiosqlite.connect('user_messages.db') as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS MESSAGES (
@@ -49,13 +49,11 @@ async def account_db(message: types.Message): # создаем базу данн
         """)
         await db.commit()
 
-
 async def save_message(user_id, username, message): # пытаемся сохранять сообщения и ПД юзеров
     async with aiosqlite.connect('user_messages.db') as db:
         await db.execute('INSERT INTO MESSAGES (user_id, username, message) VALUES (?, ?, ?)',
-                            (user_id, username, message))
+                         (user_id, username, message))
         await db.commit()
-
 
 async def on_startup(_):
     await account_db()
