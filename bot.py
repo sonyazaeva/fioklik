@@ -61,6 +61,7 @@ async def cmd_pocessname(message: types.Message, state: FSMContext):
     else:
         await message.answer('похоже, у тебя уже есть аккаунт! \n\n'
                              'ты можешь посмотреть свою статистику по команде /stats')
+        db.commit()
 
 
 @dp.message(Command("commands"))  # хэндлер на команду /commands
@@ -89,9 +90,9 @@ async def get_chat_id(message: types.Message):
 @dp.message(Command('stats')) # статистико
 async def get_stats(message: types.Message):
     chat_id = message.chat.id
-    cur.execute("SELECT name FROM users WHERE chat_id = ?", (chat_id,))
+    cur.execute(f"SELECT name FROM users WHERE {chat_id} = ?", (chat_id,))
     acc = cur.fetchone()
-    cur.execute("SELECT points FROM users WHERE chat_id = ?", (chat_id,))
+    cur.execute(f"SELECT points FROM users WHERE {chat_id} = ?", (chat_id,))
     points = cur.fetchone()
     if acc and points:
         await message.answer(f'твой юзернейм: {acc[0]}\n'
