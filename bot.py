@@ -34,7 +34,7 @@ db = sql.connect('users.db')  # создаем датабазу
 cur = db.cursor()
 async def db_database():
     cur.execute('CREATE TABLE IF NOT EXISTS users ('
-                'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, '
                 'name TEXT, '
                 'points INTEGER DEFAULT 0)')
 
@@ -47,10 +47,20 @@ async def cmd_create(message: types.Message, state: FSMContext):
 @dp.message(Form.name)  # второй этап регистрации (ждем когда придет имя)
 async def cmd_pocessname(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer(f"ура! будем знакомы, {message.text}!")  # тут знакомство заканчивается
-    username = message.text
-    db.execute(f'INSERT INTO users VALUES ("{message.chat.id}", "{username}", "{0}")')
-    db.commit()
+    chat_id = message.chat.id
+    def checker(user_id):
+        cur.execute(f"SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
+        return cur.fetchone()[0] > 0
+
+    user_id = message.chat.id
+    if not checker(user_id):
+        await message.answer(f"ура! будем знакомы, {message.text}!")  # тут знакомство заканчивается
+        username = message.text
+        db.execute(f'INSERT INTO users VALUES ("{user_id}", "{username}", "{0}")')
+        db.commit()
+    else:
+        await message.answer('похоже, у тебя уже есть аккаунт! \n\n'
+                             'ты можешь посмотреть свою статистику по команде /stats')
 
 
 @dp.message(Command("commands"))  # хэндлер на команду /commands
@@ -75,6 +85,20 @@ async def cmd_fun(message: types.Message):
 async def get_chat_id(message: types.Message):
     chat_id = message.chat.id
     await message.answer(f'айди этого чата: {chat_id}')
+
+@dp.message(Command('stats')) # статистико
+async def get_stats(message: types.Message):
+    chat_id = message.chat.id
+    cur.execute("SELECT name FROM users WHERE user_id = ?", (chat_id,))
+    acc = cur.fetchone()
+    cur.execute("SELECT points FROM users WHERE user_id = ?", (chat_id,))
+    points = cur.fetchone()
+    if acc and points:
+        await message.answer(f'твой юзернейм: {acc[0]}\n'
+                             f'твой баланс: {points[0]}')
+    else:
+        await message.answer('видимо, у тебя еще нет аккаунта.\n'
+                             'ты можешь создать его по команде /create')
 
 @dp.message(F.text)  # хэндлер на любой текст
 async def cmd_dontknow(message: types.Message):
