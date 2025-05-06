@@ -18,6 +18,7 @@ dp = Dispatcher()
 
 class Form(StatesGroup):  # создаем состояние для дальнейшей регистрации (тут же можно состояния для других штук оставить)
     name = State()
+    name_added = State()
 
 
 @dp.message(Command("start"))  # хэндлер на команду /start
@@ -48,20 +49,21 @@ async def cmd_create(message: types.Message, state: FSMContext):
 @dp.message(Form.name)  # второй этап регистрации (ждем когда придет имя)
 async def cmd_pocessname(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
+
     def checker():
         cur.execute(f"SELECT COUNT(*) FROM users WHERE {chat_id} = ?", (chat_id,))
         return cur.fetchone()[0] > 0
 
     chat_id = message.chat.id
     if not checker():
-        await message.answer(f"ура! будем знакомы, {message.text}!")  # тут знакомство заканчивается
         username = message.text
         db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}")')
+        await message.answer(f"ура! будем знакомы, {username}!")  # тут знакомство заканчивается
         db.commit()
     else:
         await message.answer('похоже, у тебя уже есть аккаунт! \n\n'
                              'ты можешь посмотреть свою статистику по команде /stats')
-        db.commit()
+    await state.set_state(Form.name_added)
 
 
 @dp.message(Command("commands"))  # хэндлер на команду /commands
