@@ -1,15 +1,23 @@
-import aiosqlite
 import asyncio
 import logging
 import random
+from aiogram import Bot, Dispatcher, types
 from aiogram.filters.command import Command
 from aiogram import F
-from aiogram import Bot, Dispatcher, types
+import requests
+import sqlite3 as sql
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from urllib.parse import quote
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
 bot = Bot(token="8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs")
 dp = Dispatcher()
+
+
+class Form(StatesGroup):  # создаем состояние для дальнейшей регистрации (тут же можно состояния для других штук оставить)
+    name = State()
 
 
 @dp.message(Command("start"))  # хэндлер на команду /start
@@ -21,6 +29,31 @@ async def cmd_start(message: types.Message):
                          "я бы хотел, чтобы наше общение было более постоянным, поэтому если ты будешь забывать писать заметки, то будешь терять баллы( "
                          "поэтому, пожалуйста, не забывай открывать чатик и писать что-то. не бойся, я напомню тебе о потере страйка!\n\n"
                          "о том, что я умею делать, ты можешь узнать, нажав /commands!")
+
+
+db = sql.connect('users.db')  # создаем датабазу
+cur = db.cursor()
+async def db_database():
+    cur.execute('CREATE TABLE IF NOT EXISTS users ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'name TEXT, '
+                'points INTEGER DEFAULT 0)')
+
+
+@dp.message(Command("create")) #хэндлер на команду /create для создания аккаунта
+async def cmd_create(message: types.Message, state: FSMContext):
+    await state.set_state(Form.name)
+    await message.answer("давай познакомимся! скажи, как к тебе обращаться?")
+
+@dp.message(Form.name)  # второй этап регистрации (ждем когда придет имя)
+async def cmd_pocessname(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await message.answer(f"ура! будем знакомы, {message.text}!")  # тут знакомство заканчивается
+    username = str(message.text)
+    cur.execute("INSERT INTO users VALUES (name, points);", (username, 0))
+    db.commit()
+    cur.close()
+    db.close()
 
 
 @dp.message(Command("commands"))  # хэндлер на команду /commands
@@ -35,64 +68,25 @@ async def cmd_note(message: types.Message):
     note = f.readlines()
     await message.answer("вот тебе идея для заметки:\n\n" + note[number])
 
+@dp.message(Command("fun"))
+async def cmd_fun(message: types.Message):
+    photo_url = 'some_url'
+    safe_url = quote(photo_url, safe=':/')
+    image = requests.get(safe_url).text
+    await message.answer_photo(photo=image)
 
-async def account_db(): # создаем базу данных с сообщениями
-    async with aiosqlite.connect('user_messages.db') as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS MESSAGES (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                username TEXT,
-                message TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        await db.commit()
-
-async def save_message(user_id, username, message): # пытаемся сохранять сообщения и ПД юзеров
-    async with aiosqlite.connect('user_messages.db') as db:
-        await db.execute('INSERT INTO MESSAGES (user_id, username, message) VALUES (?, ?, ?)',
-                         (user_id, username, message))
-        await db.commit()
-
-async def on_startup(_):
-    await account_db()
-
-@dp.message(Command("create")) # предлагаем создать аккаунт, команда /create
-async def cmd_create(message: types.Message):
-    keyb = [
-        [types.KeyboardButton(text="давай")],
-        [types.KeyboardButton(text="не сегодня")]
-    ]
-    keyboard = types.ReplyKeyboardMarkup(keyboard=keyb)
-    await message.answer("хочешь создать аккаунт?", reply_markup=keyboard)
-
-@dp.message(F.text('давай')) # отвечаем на согласие
-async def yappi(message: types.Message):
-    userid = message.from_user.id
-    username = message.from_user.username
-    await save_message(userid, username, 'записываю тебя в книжечку...')
-    await message.answer('записал тебя в книжечку :)')
-    await message.edit_reply_markup(reply_markup=None)
-
-@dp.message(F.text('не сегодня')) # отвечаем на отказ
-async def nope(message: types.Message):
-    await message.answer('ну и пожалуйста, ну и не нужно :(')
-    await message.edit_reply_markup(reply_markup=None)
-
-if __name__ == '__main__':
-    dp.startup.register(on_startup)
-    Dispatcher.start_polling(dp)
-
+@dp.message(Command('chat_id'))
+async def get_chat_id(message: types.Message):
+    chat_id = message.chat.id
+    await message.answer(f'айди этого чата: {chat_id}')
 
 @dp.message(F.text)  # хэндлер на любой текст
 async def cmd_dontknow(message: types.Message):
-    await message.answer("я пока не понимаю твои сообщения, но уже скоро смогу быть твои другом!\n\nо том, что я умею делать, ты можешь узнать, нажав /commands!")
-
+    await message.answer(
+        "я пока не понимаю твои сообщения, но уже скоро смогу быть твои другом!\n\nо том, что я умею делать, ты можешь узнать, нажав /commands!")
 
 async def main():  # весь этот блок контролирует новые апдейты в чате (чтобы все работало беспрерывно)
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
