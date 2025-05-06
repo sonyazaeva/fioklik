@@ -18,6 +18,7 @@ dp = Dispatcher()
 
 class Form(StatesGroup):  # создаем состояние для дальнейшей регистрации (тут же можно состояния для других штук оставить)
     name = State()
+    name_added = State()
 
 
 @dp.message(Command("start"))  # хэндлер на команду /start
@@ -50,6 +51,7 @@ async def cmd_pocessname(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await message.answer(f"ура! будем знакомы, {message.text}!")  # тут знакомство заканчивается
     username = str(message.text)
+    await state.set_state(Form.name_added)
     cur.execute("INSERT INTO users VALUES (name, points);", (username, 0))
     db.commit()
     cur.close()
