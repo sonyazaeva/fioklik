@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 import random
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters.command import Command
@@ -9,10 +10,13 @@ import sqlite3 as sql
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from urllib.parse import quote
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from datetime import datetime
 
 
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
-bot = Bot(token="8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs")
+TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 
@@ -83,23 +87,32 @@ async def cmd_processtime(message: types.Message, state: FSMContext):
     await state.update_data(time_hours=hours, time_mins=mins)
     db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
     db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
+
+    bot = Bot(TOKEN)
+    scheduler = AsyncIOScheduler()
+    timezone="Europe/Moscow"
+    scheduler.add_job(send_prompt, trigger="cron", hour=hours,minute=mins,start_date=datetime.now(), kwargs={
+                    "bot": bot,
+                    "chat_id": chat_id,
+                },)
+    scheduler.start()
+
     await message.answer(f'отлично, теперь каждый день в {message.text} я буду присылать тебе идею для заметки о прошедшем дне) '
                          f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!')
     db.commit()
     await state.set_state(Form.time_added)
 
 
+async def send_prompt(bot: Bot, chat_id: int):
+    f = open('notes.txt', encoding='utf-8')
+    number = random.randrange(10) # поменять, когда будет больше промптов
+    note = f.readlines()
+    await bot.send_message(chat_id, text="вот тебе идея для заметки:\n\n" + note[number])
+
+
 @dp.message(Command("commands"))  # хэндлер на команду /commands
 async def cmd_commands(message: types.Message):
-    await message.answer("по команде /note я пришлю тебе идею для заметки :)")
-
-
-@dp.message(Command("note"))  # хэндлер на команду /note
-async def cmd_note(message: types.Message):
-    f = open('notes.txt', encoding='utf-8')
-    number = random.randrange(10)
-    note = f.readlines()
-    await message.answer("вот тебе идея для заметки:\n\n" + note[number])
+    await message.answer("тут что-то будет, когда я чему-нибудь научусь :)")
 
 
 @dp.message(Command("fun")) # хэндлер на картиночки
@@ -137,9 +150,10 @@ async def cmd_dontknow(message: types.Message):
         "я пока не понимаю твои сообщения, но уже скоро смогу быть твои другом!\n\nо том, что я умею делать, ты можешь узнать, нажав /commands!")
 
 
-async def main():  # весь этот блок контролирует новые апдейты в чате (чтобы все работало беспрерывно)
+async def main() -> None: # весь этот блок контролирует новые апдейты в чате (чтобы все работало беспрерывно)
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     asyncio.run(main())
