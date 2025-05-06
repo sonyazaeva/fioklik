@@ -39,7 +39,6 @@ async def db_database():
                 'points INTEGER DEFAULT 0)')
     db.commit()
 
-
 @dp.message(Command("create")) #хэндлер на команду /create для создания аккаунта
 async def cmd_create(message: types.Message, state: FSMContext):
     await db_database()
@@ -49,16 +48,15 @@ async def cmd_create(message: types.Message, state: FSMContext):
 @dp.message(Form.name)  # второй этап регистрации (ждем когда придет имя)
 async def cmd_pocessname(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
-    chat_id = message.chat.id
-    def checker(user_id):
-        cur.execute(f"SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
+    def checker():
+        cur.execute(f"SELECT COUNT(*) FROM users WHERE {chat_id} = ?", (chat_id,))
         return cur.fetchone()[0] > 0
 
-    user_id = message.chat.id
-    if not checker(user_id):
+    chat_id = message.chat.id
+    if not checker():
         await message.answer(f"ура! будем знакомы, {message.text}!")  # тут знакомство заканчивается
         username = message.text
-        db.execute(f'INSERT INTO users VALUES ("{user_id}", "{username}", "{0}")')
+        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}")')
         db.commit()
     else:
         await message.answer('похоже, у тебя уже есть аккаунт! \n\n'
@@ -91,9 +89,9 @@ async def get_chat_id(message: types.Message):
 @dp.message(Command('stats')) # статистико
 async def get_stats(message: types.Message):
     chat_id = message.chat.id
-    cur.execute("SELECT name FROM users WHERE user_id = ?", (chat_id,))
+    cur.execute("SELECT name FROM users WHERE chat_id = ?", (chat_id,))
     acc = cur.fetchone()
-    cur.execute("SELECT points FROM users WHERE user_id = ?", (chat_id,))
+    cur.execute("SELECT points FROM users WHERE chat_id = ?", (chat_id,))
     points = cur.fetchone()
     if acc and points:
         await message.answer(f'твой юзернейм: {acc[0]}\n'
