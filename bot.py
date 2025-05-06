@@ -18,7 +18,6 @@ dp = Dispatcher()
 
 class Form(StatesGroup):  # создаем состояние для дальнейшей регистрации (тут же можно состояния для других штук оставить)
     name = State()
-    name_added = State()
 
 
 @dp.message(Command("start"))  # хэндлер на команду /start
@@ -27,10 +26,9 @@ async def cmd_start(message: types.Message):
                          "каждый день в определенное время я буду присылать тебе идеи для заметок. "
                          "за каждую заметку ты будешь получать баллы, с помощью которых сможешь открыть новые функции. "
                          "например, я буду делиться с тобой мемами, анекдотами и многим-многим другим, что сделает твой день веселее и интереснее.\n\n"
-                         "я бы хотел, чтобы наше общение было более постоянным, поэтому если ты будешь забывать писать заметки, то будешь терять баллы( "
+                         "я бы хотел, чтобы наше общение было более постоянным, поэтому если ты будешь забывать писать заметки, то будешь терять баллы :(\n\n"
                          "поэтому, пожалуйста, не забывай открывать чатик и писать что-то. не бойся, я напомню тебе о потере страйка!\n\n"
                          "о том, что я умею делать, ты можешь узнать, нажав /commands!")
-
 
 db = sql.connect('users.db')  # создаем датабазу
 cur = db.cursor()
@@ -50,18 +48,14 @@ async def cmd_create(message: types.Message, state: FSMContext):
 async def cmd_pocessname(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await message.answer(f"ура! будем знакомы, {message.text}!")  # тут знакомство заканчивается
-    username = str(message.text)
-    await state.set_state(Form.name_added)
-    cur.execute("INSERT INTO users VALUES (name, points);", (username, 0))
+    username = message.text
+    db.execute(f'INSERT INTO users VALUES ("{message.chat.id}", "{username}", "{0}")')
     db.commit()
-    cur.close()
-    db.close()
 
 
 @dp.message(Command("commands"))  # хэндлер на команду /commands
 async def cmd_commands(message: types.Message):
     await message.answer("по команде /note я пришлю тебе идею для заметки :)")
-
 
 @dp.message(Command("note"))  # хэндлер на команду /note
 async def cmd_note(message: types.Message):
@@ -70,14 +64,14 @@ async def cmd_note(message: types.Message):
     note = f.readlines()
     await message.answer("вот тебе идея для заметки:\n\n" + note[number])
 
-@dp.message(Command("fun"))
+@dp.message(Command("fun")) # хэндлер на картиночки
 async def cmd_fun(message: types.Message):
     photo_url = 'some_url'
     safe_url = quote(photo_url, safe=':/')
     image = requests.get(safe_url).text
     await message.answer_photo(photo=image)
 
-@dp.message(Command('chat_id'))
+@dp.message(Command('chat_id')) # айди
 async def get_chat_id(message: types.Message):
     chat_id = message.chat.id
     await message.answer(f'айди этого чата: {chat_id}')
@@ -87,8 +81,10 @@ async def cmd_dontknow(message: types.Message):
     await message.answer(
         "я пока не понимаю твои сообщения, но уже скоро смогу быть твои другом!\n\nо том, что я умею делать, ты можешь узнать, нажав /commands!")
 
+
 async def main():  # весь этот блок контролирует новые апдейты в чате (чтобы все работало беспрерывно)
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
