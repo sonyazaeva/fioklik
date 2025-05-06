@@ -37,10 +37,12 @@ async def db_database():
                 'id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, '
                 'name TEXT, '
                 'points INTEGER DEFAULT 0)')
+    db.commit()
 
 
 @dp.message(Command("create")) #хэндлер на команду /create для создания аккаунта
 async def cmd_create(message: types.Message, state: FSMContext):
+    await db_database()
     await state.set_state(Form.name)
     await message.answer("давай познакомимся! скажи, как к тебе обращаться?")
 
