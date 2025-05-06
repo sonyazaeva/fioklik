@@ -19,6 +19,8 @@ dp = Dispatcher()
 class Form(StatesGroup):  # создаем состояние для дальнейшей регистрации (тут же можно состояния для других штук оставить)
     name = State()
     name_added = State()
+    time = State()
+    time_added = State()
 
 
 @dp.message(Command("start"))  # хэндлер на команду /start
@@ -29,7 +31,9 @@ async def cmd_start(message: types.Message):
                          "например, я буду делиться с тобой мемами, анекдотами и многим-многим другим, что сделает твой день веселее и интереснее.\n\n"
                          "я бы хотел, чтобы наше общение было более постоянным, поэтому если ты будешь забывать писать заметки, то будешь терять баллы :(\n\n"
                          "поэтому, пожалуйста, не забывай открывать чатик и писать что-то. не бойся, я напомню тебе о потере страйка!\n\n"
-                         "о том, что я умею делать, ты можешь узнать, нажав /commands!")
+                         "о том, что я умею делать, ты можешь узнать, нажав /commands!"
+                         "а чтобы создать аккаунт, нажми /create)")
+
 
 db = sql.connect('users.db')  # создаем датабазу
 cur = db.cursor()
@@ -39,8 +43,9 @@ async def db_database():
                 'name TEXT, '
                 'points INTEGER DEFAULT 0,'
                 'time_hours INTEGER DEFAULT 0,'
-                'time_min INTEGER DEFAULT 0)')
+                'time_mins INTEGER DEFAULT 0)')
     db.commit()
+
 
 @dp.message(Command("create")) #хэндлер на команду /create для создания аккаунта
 async def cmd_create(message: types.Message, state: FSMContext):
@@ -48,9 +53,11 @@ async def cmd_create(message: types.Message, state: FSMContext):
     await state.set_state(Form.name)
     await message.answer("давай познакомимся! скажи, как к тебе обращаться?")
 
+
 @dp.message(Form.name)  # второй этап регистрации (ждем когда придет имя)
-async def cmd_pocessname(message: types.Message, state: FSMContext):
+async def cmd_processname(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
+    await state.set_state(Form.name_added)
 
     def checker():
         cur.execute(f"SELECT COUNT(*) FROM users WHERE {chat_id} = ?", (chat_id,))
@@ -60,17 +67,32 @@ async def cmd_pocessname(message: types.Message, state: FSMContext):
     if not checker():
         username = message.text
         db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "{0}", "{0}")')
-        await message.answer(f"ура! будем знакомы, {username}!")  # тут знакомство заканчивается
+        await state.set_state(Form.time)
+        await message.answer(f"ура! будем знакомы, {username}!\n"
+                             f"теперь я каждый день буду присылать тебе идеи для заметок. напиши удобное для тебя время в формате 00:00, например 18:00")  # тут знакомство заканчивается
         db.commit()
     else:
         await message.answer('похоже, у тебя уже есть аккаунт! \n\n'
                              'ты можешь посмотреть свою статистику по команде /stats')
-    await state.set_state(Form.name_added)
+
+
+@dp.message(Form.time)  # третий этап регистрации (ждем когда придет удобное время)
+async def cmd_processtime(message: types.Message, state: FSMContext):
+    hours, mins = map(int, message.text.split(':'))
+    chat_id = message.chat.id
+    await state.update_data(time_hours=hours, time_mins=mins)
+    db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
+    db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
+    await message.answer(f'отлично, теперь каждый день в {message.text} я буду присылать тебе идею для заметки о прошедшем дне) '
+                         f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!')
+    db.commit()
+    await state.set_state(Form.time_added)
 
 
 @dp.message(Command("commands"))  # хэндлер на команду /commands
 async def cmd_commands(message: types.Message):
     await message.answer("по команде /note я пришлю тебе идею для заметки :)")
+
 
 @dp.message(Command("note"))  # хэндлер на команду /note
 async def cmd_note(message: types.Message):
@@ -79,6 +101,7 @@ async def cmd_note(message: types.Message):
     note = f.readlines()
     await message.answer("вот тебе идея для заметки:\n\n" + note[number])
 
+
 @dp.message(Command("fun")) # хэндлер на картиночки
 async def cmd_fun(message: types.Message):
     photo_url = 'some_url'
@@ -86,10 +109,12 @@ async def cmd_fun(message: types.Message):
     image = requests.get(safe_url).text
     await message.answer_photo(photo=image)
 
+
 @dp.message(Command('chat_id')) # айди
 async def get_chat_id(message: types.Message):
     chat_id = message.chat.id
     await message.answer(f'айди этого чата: {chat_id}')
+
 
 @dp.message(Command('stats')) # статистико
 async def get_stats(message: types.Message):
@@ -104,6 +129,7 @@ async def get_stats(message: types.Message):
     else:
         await message.answer('видимо, у тебя еще нет аккаунта.\n'
                              'ты можешь создать его по команде /create')
+
 
 @dp.message(F.text)  # хэндлер на любой текст
 async def cmd_dontknow(message: types.Message):
