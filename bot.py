@@ -37,7 +37,9 @@ async def db_database():
     cur.execute('CREATE TABLE IF NOT EXISTS users ('
                 'id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, '
                 'name TEXT, '
-                'points INTEGER DEFAULT 0)')
+                'points INTEGER DEFAULT 0,'
+                'time_hours INTEGER DEFAULT 0,'
+                'time_min INTEGER DEFAULT 0)')
     db.commit()
 
 @dp.message(Command("create")) #хэндлер на команду /create для создания аккаунта
@@ -57,7 +59,7 @@ async def cmd_pocessname(message: types.Message, state: FSMContext):
     chat_id = message.chat.id
     if not checker():
         username = message.text
-        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}")')
+        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "{0}", "{0}")')
         await message.answer(f"ура! будем знакомы, {username}!")  # тут знакомство заканчивается
         db.commit()
     else:
