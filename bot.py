@@ -27,6 +27,10 @@ class Form(StatesGroup):  # создаем состояние для дальн�
     time_added = State()
 
 
+db = sql.connect('users.db')  # создаем датабазу
+cur = db.cursor()
+
+
 @dp.message(Command("start"))  # хэндлер на команду /start
 async def cmd_start(message: types.Message):
     await message.answer("привет! я Фёклик — друг, который всегда найдёт, чем тебя занять :)\n\n"
@@ -39,11 +43,9 @@ async def cmd_start(message: types.Message):
                          "а чтобы создать аккаунт, нажми /create)")
 
 
-db = sql.connect('users.db')  # создаем датабазу
-cur = db.cursor()
 async def db_database():
     cur.execute('CREATE TABLE IF NOT EXISTS users ('
-                'id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, '
+                'id INTEGER PRIMARY KEY, '
                 'name TEXT, '
                 'points INTEGER DEFAULT 0,'
                 'time_hours INTEGER DEFAULT 0,'
@@ -71,10 +73,10 @@ async def cmd_processname(message: types.Message, state: FSMContext):
     if not checker():
         username = message.text
         db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "{0}", "{0}")')
-        await state.set_state(Form.time)
         await message.answer(f"ура! будем знакомы, {username}!\n"
-                             f"теперь я каждый день буду присылать тебе идеи для заметок. напиши удобное для тебя время в формате 00:00, например 18:00")  # тут знакомство заканчивается
+                             f"теперь я каждый день буду присылать тебе идеи для заметок. напиши удобное для тебя время в формате 00:00, например, 6:00 для утра или 18:00 для вечера")  # тут знакомство заканчивается
         db.commit()
+        await state.set_state(Form.time)
     else:
         await message.answer('похоже, у тебя уже есть аккаунт! \n\n'
                              'ты можешь посмотреть свою статистику по команде /stats')
@@ -85,16 +87,19 @@ async def cmd_processtime(message: types.Message, state: FSMContext):
     hours, mins = map(int, message.text.split(':'))
     chat_id = message.chat.id
     await state.update_data(time_hours=hours, time_mins=mins)
-    db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
-    db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
+    if 0 <= hours < 24 and 0 <= mins < 60 :
+        db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
+        db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
+    else:
+        await message.answer("пожалуйста, введи время в правильном формате, например 6:00 для утра или 18:00 для вечера")
 
     bot = Bot(TOKEN)
     scheduler = AsyncIOScheduler()
     timezone="Europe/Moscow"
     scheduler.add_job(send_prompt, trigger="cron", hour=hours,minute=mins,start_date=datetime.now(), kwargs={
                     "bot": bot,
-                    "chat_id": chat_id,
-                },)
+                    "chat_id": chat_id},
+                      )
     scheduler.start()
 
     await message.answer(f'отлично, теперь каждый день в {message.text} я буду присылать тебе идею для заметки о прошедшем дне) '
@@ -136,9 +141,18 @@ async def get_stats(message: types.Message):
     acc = cur.fetchone()
     cur.execute(f"SELECT points FROM users WHERE {chat_id} = ?", (chat_id,))
     points = cur.fetchone()
-    if acc and points:
+    cur.execute(f"SELECT time_hours FROM users WHERE {chat_id} = ?", (chat_id,))
+    time_h = cur.fetchone()
+    cur.execute(f"SELECT time_mins FROM users WHERE {chat_id} = ?", (chat_id,))
+    time_m = cur.fetchone()
+    if acc and time_m[0] < 10:
         await message.answer(f'твой юзернейм: {acc[0]}\n'
-                             f'твой баланс: {points[0]}')
+                             f'твой баланс: {points[0]}\n'
+                             f'выбранное время: {time_h[0]}:0{time_m[0]}')
+    elif acc and time_m[0] >= 10:
+        await message.answer(f'твой юзернейм: {acc[0]}\n'
+                             f'твой баланс: {points[0]}\n'
+                             f'выбранное время: {time_h[0]}:{time_m[0]}')
     else:
         await message.answer('видимо, у тебя еще нет аккаунта.\n'
                              'ты можешь создать его по команде /create')
