@@ -69,7 +69,7 @@ async def cmd_processname(message: types.Message, state: FSMContext):
     await state.set_state(Form.name_added)
 
     def checker():
-        cur.execute(f"SELECT COUNT(*) FROM users WHERE {chat_id} = ?", (chat_id,))
+        cur.execute("SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
         return cur.fetchone()[0] > 0
 
     chat_id = message.chat.id
@@ -145,13 +145,13 @@ async def get_chat_id(message: types.Message):
 @dp.message(Command('stats')) # статистико
 async def get_stats(message: types.Message):
     chat_id = message.chat.id
-    cur.execute(f"SELECT name FROM users WHERE {chat_id} = ?", (chat_id,))
+    cur.execute(f"SELECT name FROM users WHERE id = ?", (chat_id,))
     acc = cur.fetchone()
-    cur.execute(f"SELECT points FROM users WHERE {chat_id} = ?", (chat_id,))
+    cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
     points = cur.fetchone()
-    cur.execute(f"SELECT time_hours FROM users WHERE {chat_id} = ?", (chat_id,))
+    cur.execute(f"SELECT time_hours FROM users WHERE id = ?", (chat_id,))
     time_h = cur.fetchone()
-    cur.execute(f"SELECT time_mins FROM users WHERE {chat_id} = ?", (chat_id,))
+    cur.execute(f"SELECT time_mins FROM users WHERE id = ?", (chat_id,))
     time_m = cur.fetchone()
     if acc and time_m[0] < 10:
         await message.answer(f'твой юзернейм: {acc[0]}\n'
