@@ -31,3 +31,11 @@ async def send_prompt(bot: Bot, chat_id: int):
     number = random.randrange(10) # поменять, когда будет больше промптов
     note = f.readlines()
     await bot.send_message(chat_id, text="вот тебе идея для заметки:\n\n" + note[number])
+
+async def main() -> None: # весь этот блок контролирует новые апдейты в чате (чтобы все работало беспрерывно)
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    asyncio.run(main())
