@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import random
+import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters.command import Command
 from aiogram import F
@@ -12,6 +13,8 @@ from aiogram.fsm.state import State, StatesGroup
 from urllib.parse import quote
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime
+
+from aiogram.types import FSInputFile
 
 
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
@@ -120,13 +123,18 @@ async def cmd_commands(message: types.Message):
     await message.answer("тут что-то будет, когда я чему-нибудь научусь :)")
 
 
+
+def get_image():
+    images = [x for x in os.listdir(r'C:\Users\sofiy\PycharmProjects\telegrambot\codes\images\photos')]
+
+    return os.path.join(r'C:\Users\sofiy\PycharmProjects\telegrambot\codes\images\photos', random.choice(images))
+
 @dp.message(Command("fun")) # хэндлер на картиночки
 async def cmd_fun(message: types.Message):
-    photo_url = 'some_url'
-    safe_url = quote(photo_url, safe=':/')
-    image = requests.get(safe_url).text
-    await message.answer_photo(photo=image)
-
+    image_path = get_image()
+    if image_path:
+        photo = FSInputFile(image_path)
+        await message.answer_photo(photo, caption='картиночка для тебя :з')
 
 @dp.message(Command('chat_id')) # айди
 async def get_chat_id(message: types.Message):
