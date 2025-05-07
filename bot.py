@@ -120,8 +120,11 @@ async def send_prompt(bot: Bot, chat_id: int):
 
 @dp.message(Command("commands"))  # хэндлер на команду /commands
 async def cmd_commands(message: types.Message):
-    await message.answer("тут что-то будет, когда я чему-нибудь научусь :)")
-
+    await message.answer('вот, что я уже умею!\n\n'
+                         'create — создать аккаунт! давай скорее познакомимся\n'
+                         '/account — проверить свои имя, баланс и доступные функции\n'
+                         '/note — получить идею для заметки\n'
+                         '/commands — узнать, что я умею делать')
 
 
 def get_image():
@@ -142,8 +145,8 @@ async def get_chat_id(message: types.Message):
     await message.answer(f'айди этого чата: {chat_id}')
 
 
-@dp.message(Command('stats')) # статистико
-async def get_stats(message: types.Message):
+@dp.message(Command('account')) # статистико аккаунто
+async def get_account(message: types.Message):
     chat_id = message.chat.id
     cur.execute(f"SELECT name FROM users WHERE id = ?", (chat_id,))
     acc = cur.fetchone()
