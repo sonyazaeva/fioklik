@@ -28,6 +28,10 @@ class Form(StatesGroup):  # создаем состояние для дальн�
     name_added = State()
     time = State()
     time_added = State()
+    change_name = State()
+    change_name_added = State()
+    change_time = State()
+    change_time_added = State()
 
 
 db = sql.connect('users.db')  # создаем датабазу
@@ -42,7 +46,7 @@ async def cmd_start(message: types.Message):
                          "например, я буду делиться с тобой мемами, анекдотами и многим-многим другим, что сделает твой день веселее и интереснее.\n\n"
                          "я бы хотел, чтобы наше общение было более постоянным, поэтому если ты будешь забывать писать заметки, то будешь терять баллы :(\n\n"
                          "поэтому, пожалуйста, не забывай открывать чатик и писать что-то. не бойся, я напомню тебе о потере страйка!\n\n"
-                         "о том, что я умею делать, ты можешь узнать, нажав /commands!"
+                         "о том, что я умею делать, ты можешь узнать, нажав /commands!\n"
                          "а чтобы создать аккаунт, нажми /create)")
 
 
@@ -99,7 +103,7 @@ async def cmd_processtime(message: types.Message, state: FSMContext):
     bot = Bot(TOKEN)
     scheduler = AsyncIOScheduler()
     timezone="Europe/Moscow"
-    scheduler.add_job(send_prompt, trigger="cron", hour=hours,minute=mins,start_date=datetime.now(), kwargs={
+    scheduler.add_job(send_prompt, trigger="cron", hour=hours,minute=mins,start_date=datetime.now(), id=str(chat_id), kwargs={
                     "bot": bot,
                     "chat_id": chat_id},
                       )
@@ -116,6 +120,70 @@ async def send_prompt(bot: Bot, chat_id: int):
     number = random.randrange(10) # поменять, когда будет больше промптов
     note = f.readlines()
     await bot.send_message(chat_id, text="вот тебе идея для заметки:\n\n" + note[number])
+
+
+@dp.message(Command("change_name"))  # хэндлер на команду /change_name
+async def cmd_change_name(message: types.Message, state: FSMContext):
+
+    def checker():
+        cur.execute("SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
+        return cur.fetchone()[0] > 0
+
+    chat_id = message.chat.id
+    if not checker():
+        await message.answer('кажется, у тебя пока нет аккаунта :( чтобы создать его нажми /create')
+    else:
+        await state.set_state(Form.change_name)
+        await message.answer("ты можешь выбрать новое имя!")
+
+@dp.message(Form.change_name)  # ждем когда придет новое имя
+async def cmd_processchangedname(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    chat_id = message.chat.id
+    username = message.text
+    db.execute(f'UPDATE users SET name = ? WHERE id = ?', (username, chat_id))
+    await message.answer(f"ура! твоё новое имя: {username})")
+    db.commit()
+    await state.set_state(Form.change_name_added)
+
+
+@dp.message(Command("change_time"))  # хэндлер на команду /change_time
+async def cmd_change_time(message: types.Message, state: FSMContext):
+
+    def checker():
+        cur.execute("SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
+        return cur.fetchone()[0] > 0
+
+    chat_id = message.chat.id
+    if not checker():
+        await message.answer('кажется, у тебя пока нет аккаунта :( чтобы создать его нажми /create')
+    else:
+        await state.set_state(Form.change_time)
+        await message.answer("ты можешь выбрать другое время!")
+
+@dp.message(Form.change_time)  # ждем когда придет новое время
+async def cmd_processchangedtime(message: types.Message, state: FSMContext):
+    hours, mins = map(int, message.text.split(':'))
+    chat_id = message.chat.id
+    await state.update_data(time_hours=hours, time_mins=mins)
+    if 0 <= hours < 24 and 0 <= mins < 60 :
+        db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
+        db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
+    else:
+        await message.answer("пожалуйста, введи время в правильном формате, например 6:00 для утра или 18:00 для вечера")
+
+    bot = Bot(TOKEN)
+    scheduler = AsyncIOScheduler()
+    timezone="Europe/Moscow"
+    scheduler.scheduled_job(send_prompt, trigger="cron", hour=hours, minute=mins, start_date=datetime.now(), id=str(chat_id), kwargs={
+                    "bot": bot,
+                    "chat_id": chat_id},
+                      )
+    scheduler.start()
+
+    await message.answer(f"ура! теперь я буду присылать тебе идеи для записок о дне в {message.text})")
+    db.commit()
+    await state.set_state(Form.change_time_added)
 
 
 @dp.message(Command("commands"))  # хэндлер на команду /commands
@@ -153,16 +221,14 @@ async def get_account(message: types.Message):
     points = cur.fetchone()
     cur.execute(f"SELECT time_hours FROM users WHERE id = ?", (chat_id,))
     time_h = cur.fetchone()
+    h = "%s" % str(time_h[0]) if time_h[0] >= 10 else "0%s" % str(time_h[0])
     cur.execute(f"SELECT time_mins FROM users WHERE id = ?", (chat_id,))
     time_m = cur.fetchone()
-    if acc and time_m[0] < 10:
+    m = "%s" % str(time_m[0]) if time_m[0] >= 10 else "0%s" % str(time_m[0])
+    if acc:
         await message.answer(f'твой юзернейм: {acc[0]}\n'
                              f'твой баланс: {points[0]}\n'
-                             f'выбранное время: {time_h[0]}:0{time_m[0]}')
-    elif acc and time_m[0] >= 10:
-        await message.answer(f'твой юзернейм: {acc[0]}\n'
-                             f'твой баланс: {points[0]}\n'
-                             f'выбранное время: {time_h[0]}:{time_m[0]}')
+                             f'выбранное время: {h}:{m}')
     else:
         await message.answer('видимо, у тебя еще нет аккаунта.\n'
                              'ты можешь создать его по команде /create')
