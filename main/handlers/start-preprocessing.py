@@ -36,6 +36,13 @@ class Form(StatesGroup):  # создаем состояние для дальн�
 db = sql.connect('users.db')  # создаем датабазу
 cur = db.cursor()
 
+@dp.message(Command("commands"))  # хэндлер на команду /commands
+async def cmd_commands(message: types.Message):
+    await message.answer('вот, что я уже умею!\n\n'
+                         'create — создать аккаунт! давай скорее познакомимся\n'
+                         '/account — проверить свои имя, баланс и доступные функции\n'
+                         '/commands — узнать, что я умею делать')
+
 @dp.message(Command("create")) #хэндлер на команду /create для создания аккаунта
 async def cmd_create(message: types.Message, state: FSMContext):
     await db_database()
