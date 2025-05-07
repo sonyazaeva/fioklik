@@ -123,7 +123,6 @@ async def cmd_commands(message: types.Message):
     await message.answer('вот, что я уже умею!\n\n'
                          'create — создать аккаунт! давай скорее познакомимся\n'
                          '/account — проверить свои имя, баланс и доступные функции\n'
-                         '/note — получить идею для заметки\n'
                          '/commands — узнать, что я умею делать')
 
 
