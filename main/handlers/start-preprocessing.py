@@ -95,3 +95,11 @@ async def cmd_processtime(message: types.Message, state: FSMContext):
                          f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!')
     db.commit()
     await state.set_state(Form.time_added)
+
+async def main() -> None: # весь этот блок контролирует новые апдейты в чате (чтобы все работало беспрерывно)
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    asyncio.run(main())
