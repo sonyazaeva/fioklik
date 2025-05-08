@@ -172,8 +172,11 @@ async def choose_timezone(message: types.Message):
                          reply_markup=keyboard
                          )
 
+async def send_timezone_confirmation(message: types.Message, timezone: str):
+    await message.answer(f'часовой пояс {timezone[0:3].upper()} +{timezone[4]} выбран!')
+
 @dp.callback_query()
-async def handle_timezone(callback_query: types.callback_query):
+async def handle_timezone(callback_query: types.callback_query,):
     chat_id = callback_query.from_user.id
     username = callback_query.from_user.username
     timezone = callback_query.data
@@ -184,8 +187,8 @@ async def handle_timezone(callback_query: types.callback_query):
     else:
         cur.execute("INSERT INTO users VALUES (?, ?, ?)", (chat_id, username, timezone))
     db.commit()
-
-    await callback_query.answer(f"часовой пояс {timezone} выбран")
+    await callback_query.answer(':з')
+    await send_timezone_confirmation(callback_query.message, timezone)
 
 
 @dp.message(Command("change_name"))  # хэндлер на команду /change_name
