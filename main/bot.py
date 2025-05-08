@@ -3,24 +3,23 @@ import logging
 import sys
 import random
 import os
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters.command import Command
-from aiogram import F
 import requests
 import sqlite3 as sql
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.types import FSInputFile
+from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from urllib.parse import quote
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime
 
-from aiogram.types import FSInputFile
-
 
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
 TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+scheduler = AsyncIOScheduler()
 
 
 class Form(StatesGroup):  # создаем состояние для дальнейшей регистрации (тут же можно состояния для других штук оставить)
@@ -59,6 +58,11 @@ async def db_database():
                 'time_mins INTEGER DEFAULT 0)')
     db.commit()
 
+async def send_prompt(bot: Bot, chat_id: int):
+    f = open('notes.txt', encoding='utf-8')
+    number = random.randrange(10) # поменять, когда будет больше промптов
+    note = f.readlines()
+    await bot.send_message(chat_id, text="вот тебе идея для заметки:\n\n" + note[number])
 
 @dp.message(Command("create")) #хэндлер на команду /create для создания аккаунта
 async def cmd_create(message: types.Message, state: FSMContext):
@@ -66,69 +70,50 @@ async def cmd_create(message: types.Message, state: FSMContext):
     await state.set_state(Form.name)
     await message.answer("давай познакомимся! скажи, как к тебе обращаться?")
 
-
 @dp.message(Form.name)  # второй этап регистрации (ждем когда придет имя)
 async def cmd_processname(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await state.set_state(Form.name_added)
-
     def checker():
         cur.execute("SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
         return cur.fetchone()[0] > 0
-
     chat_id = message.chat.id
     if not checker():
         username = message.text
         db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "{0}", "{0}")')
         await message.answer(f"ура! будем знакомы, {username}!\n"
-                             f"теперь я каждый день буду присылать тебе идеи для заметок. напиши удобное для тебя время в формате 00:00, например, 6:00 для утра или 18:00 для вечера")  # тут знакомство заканчивается
+                             f"чтобы я каждый день присылал тебе идеи для заметок, напиши удобное для тебя время в формате 00:00, например, 06:00 для утра или 18:00 для вечера")  # тут знакомство заканчивается
         db.commit()
         await state.set_state(Form.time)
     else:
         await message.answer('похоже, у тебя уже есть аккаунт! \n\n'
                              'ты можешь посмотреть свою статистику по команде /stats')
 
-
 @dp.message(Form.time)  # третий этап регистрации (ждем когда придет удобное время)
 async def cmd_processtime(message: types.Message, state: FSMContext):
     hours, mins = map(int, message.text.split(':'))
     chat_id = message.chat.id
     await state.update_data(time_hours=hours, time_mins=mins)
-    if 0 <= hours < 24 and 0 <= mins < 60 :
+    if 0 <= hours < 24 and 0 <= mins < 60:
         db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
         db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
     else:
-        await message.answer("пожалуйста, введи время в правильном формате, например 6:00 для утра или 18:00 для вечера")
-
-    bot = Bot(TOKEN)
-    scheduler = AsyncIOScheduler()
-    timezone="Europe/Moscow"
-    scheduler.add_job(send_prompt, trigger="cron", hour=hours,minute=mins,start_date=datetime.now(), id=str(chat_id), kwargs={
+        await message.answer("пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера")
+    scheduler.add_job(send_prompt, trigger="cron", hour=hours, minute=mins, id=str(chat_id), kwargs={
                     "bot": bot,
                     "chat_id": chat_id},
                       )
-    scheduler.start()
-
     await message.answer(f'отлично, теперь каждый день в {message.text} я буду присылать тебе идею для заметки о прошедшем дне) '
                          f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!')
     db.commit()
     await state.set_state(Form.time_added)
 
 
-async def send_prompt(bot: Bot, chat_id: int):
-    f = open('notes.txt', encoding='utf-8')
-    number = random.randrange(10) # поменять, когда будет больше промптов
-    note = f.readlines()
-    await bot.send_message(chat_id, text="вот тебе идея для заметки:\n\n" + note[number])
-
-
 @dp.message(Command("change_name"))  # хэндлер на команду /change_name
 async def cmd_change_name(message: types.Message, state: FSMContext):
-
     def checker():
         cur.execute("SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
         return cur.fetchone()[0] > 0
-
     chat_id = message.chat.id
     if not checker():
         await message.answer('кажется, у тебя пока нет аккаунта :( чтобы создать его нажми /create')
@@ -149,17 +134,15 @@ async def cmd_processchangedname(message: types.Message, state: FSMContext):
 
 @dp.message(Command("change_time"))  # хэндлер на команду /change_time
 async def cmd_change_time(message: types.Message, state: FSMContext):
-
     def checker():
         cur.execute("SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
         return cur.fetchone()[0] > 0
-
     chat_id = message.chat.id
     if not checker():
         await message.answer('кажется, у тебя пока нет аккаунта :( чтобы создать его нажми /create')
     else:
         await state.set_state(Form.change_time)
-        await message.answer("ты можешь выбрать другое время!")
+        await message.answer("ты можешь выбрать другое время! пожалуйста, введи его в формате 00:00, например, 06:00 для утра или 18:00 для вечера")
 
 @dp.message(Form.change_time)  # ждем когда придет новое время
 async def cmd_processchangedtime(message: types.Message, state: FSMContext):
@@ -171,16 +154,7 @@ async def cmd_processchangedtime(message: types.Message, state: FSMContext):
         db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
     else:
         await message.answer("пожалуйста, введи время в правильном формате, например 6:00 для утра или 18:00 для вечера")
-
-    bot = Bot(TOKEN)
-    scheduler = AsyncIOScheduler()
-    timezone="Europe/Moscow"
-    scheduler.scheduled_job(send_prompt, trigger="cron", hour=hours, minute=mins, start_date=datetime.now(), id=str(chat_id), kwargs={
-                    "bot": bot,
-                    "chat_id": chat_id},
-                      )
-    scheduler.start()
-
+    scheduler.reschedule_job(job_id=str(chat_id), trigger="cron", hour=hours, minute=mins)
     await message.answer(f"ура! теперь я буду присылать тебе идеи для записок о дне в {message.text})")
     db.commit()
     await state.set_state(Form.change_time_added)
@@ -205,6 +179,7 @@ async def cmd_fun(message: types.Message):
     if image_path:
         photo = FSInputFile(image_path)
         await message.answer_photo(photo, caption='картиночка для тебя :з')
+
 
 @dp.message(Command('chat_id')) # айди
 async def get_chat_id(message: types.Message):
@@ -241,8 +216,8 @@ async def cmd_dontknow(message: types.Message):
 
 
 async def main() -> None: # весь этот блок контролирует новые апдейты в чате (чтобы все работало беспрерывно)
+    scheduler.start()
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
