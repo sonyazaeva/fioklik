@@ -7,6 +7,7 @@ import requests
 import sqlite3 as sql
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import FSInputFile
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -25,6 +26,7 @@ scheduler = AsyncIOScheduler()
 class Form(StatesGroup):  # создаем состояние для дальнейшей регистрации (тут же можно состояния для других штук оставить)
     name = State()
     name_added = State()
+    timezone = State()
     time = State()
     time_added = State()
     change_name = State()
@@ -53,9 +55,11 @@ async def db_database():
     cur.execute('CREATE TABLE IF NOT EXISTS users ('
                 'id INTEGER PRIMARY KEY, '
                 'name TEXT, '
-                'points INTEGER DEFAULT 0,'
-                'time_hours INTEGER DEFAULT 0,'
-                'time_mins INTEGER DEFAULT 0)')
+                'points INTEGER DEFAULT 0, '
+                'timezone TEXT, '
+                'time_hours INTEGER DEFAULT 0, '
+                'time_mins INTEGER DEFAULT 0)'
+                )
     db.commit()
 
 async def send_prompt(bot: Bot, chat_id: int):
@@ -80,9 +84,10 @@ async def cmd_processname(message: types.Message, state: FSMContext):
     chat_id = message.chat.id
     if not checker():
         username = message.text
-        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "{0}", "{0}")')
+        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "smth","{0}", "{0}")')
         await message.answer(f"ура! будем знакомы, {username}!\n"
-                             f"чтобы я каждый день присылал тебе идеи для заметок, напиши удобное для тебя время в формате 00:00, например, 06:00 для утра или 18:00 для вечера")  # тут знакомство заканчивается
+                             f"чтобы я каждый день присылал тебе идеи для заметок, сначала напиши удобное для тебя время в формате 00:00, например, 06:00 для утра или 18:00 для вечера")  # тут знакомство заканчивается
+
         db.commit()
         await state.set_state(Form.time)
     else:
@@ -104,9 +109,83 @@ async def cmd_processtime(message: types.Message, state: FSMContext):
                     "chat_id": chat_id},
                       )
     await message.answer(f'отлично, теперь каждый день в {message.text} я буду присылать тебе идею для заметки о прошедшем дне) '
-                         f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!')
+                         f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!\n\n'
+                         f'теперь тебе нужно выбрать часовой пояс, в котором ты находишься.\n'
+                         f'для этого вызови команду /timezone и нажми на нужную кнопку под сообщением.')
     db.commit()
     await state.set_state(Form.time_added)
+
+
+@dp.message(Command('timezone'))
+async def choose_timezone(message: types.Message):
+    utc_2 = InlineKeyboardButton(
+        text='UTC +2',
+        callback_data='utc_2'
+    )
+    utc_3 = InlineKeyboardButton(
+        text='UTC +3',
+        callback_data='utc_3'
+    )
+    utc_4 = InlineKeyboardButton(
+        text='UTC +4',
+        callback_data='utc_4'
+    )
+    utc_5 = InlineKeyboardButton(
+        text='UTC +5',
+        callback_data='utc_5'
+    )
+    utc_6 = InlineKeyboardButton(
+        text='UTC +6',
+        callback_data='utc_6'
+    )
+    utc_7 = InlineKeyboardButton(
+        text='UTC +7',
+        callback_data='utc_7'
+    )
+    utc_8 = InlineKeyboardButton(
+        text='UTC +8',
+        callback_data='utc_8'
+    )
+    utc_9 = InlineKeyboardButton(
+        text='UTC +9',
+        callback_data='utc_9'
+    )
+    utc_10 = InlineKeyboardButton(
+        text='UTC +10',
+        callback_data='utc_10'
+    )
+    utc_11 = InlineKeyboardButton(
+        text='UTC +11',
+        callback_data='utc_11'
+    )
+    utc_12 = InlineKeyboardButton(
+        text='UTC +12',
+        callback_data='utc_12'
+    )
+    row = [utc_2, utc_3, utc_4]
+    rowb = [utc_5, utc_6, utc_7]
+    rowc = [utc_8, utc_9, utc_10]
+    rowd = [utc_11, utc_12]
+    rows = [row, rowb, rowc, rowd]
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=rows)
+    await message.answer(text='Выбери тот часовой пояс, в котором ты находишься',
+                         reply_markup=keyboard
+                         )
+
+@dp.callback_query()
+async def handle_timezone(callback_query: types.callback_query):
+    chat_id = callback_query.from_user.id
+    username = callback_query.from_user.username
+    timezone = callback_query.data
+
+    cur.execute("SELECT 1 FROM users WHERE id = ?", (chat_id,))
+    if cur.fetchone():
+        cur.execute("UPDATE users SET timezone = ? WHERE id = ?", (timezone, chat_id))
+    else:
+        cur.execute("INSERT INTO users VALUES (?, ?, ?)", (chat_id, username, timezone))
+    db.commit()
+
+    await callback_query.answer(f"часовой пояс {timezone} выбран")
 
 
 @dp.message(Command("change_name"))  # хэндлер на команду /change_name
