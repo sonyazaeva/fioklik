@@ -60,15 +60,21 @@ async def db_database():
                 'points INTEGER DEFAULT 0, '
                 'timezone TEXT, '
                 'time_hours INTEGER DEFAULT 0, '
-                'time_mins INTEGER DEFAULT 0)'
+                'time_mins INTEGER DEFAULT 0, '
+                'save_status INTEGER DEFAULT 0, '
+                'strike INTEGER DEFAULT 0)'
                 )
     db.commit()
 
 async def send_prompt(bot: Bot, chat_id: int):
-    f = open('notes.txt', encoding='utf-8')
-    number = random.randrange(55) # поменять, когда будет больше промптов
-    note = f.readlines()
-    await bot.send_message(chat_id, text=f"вот тебе идея для заметки:\n<b>{note[number]}</b>\n\n", parse_mode='HTML')
+    cur.execute(f"SELECT save_status FROM users WHERE id = ?", (chat_id,))
+    save_status = cur.fetchone()
+    if save_status[0] == 0:
+        f = open('notes.txt', encoding='utf-8')
+        number = random.randrange(200) # поменять, когда будет больше промптов
+        note = f.readlines()
+        await bot.send_message(chat_id, text=f"вот тебе идея для заметки:\n\n<b>{note[number]}</b>\n\n"
+                                             f"чтобы сохранить заметку, введи сначала команду /save", parse_mode='HTML')
 
 @dp.message(Command("create")) #хэндлер на команду /create для создания аккаунта
 async def cmd_create(message: types.Message, state: FSMContext):
@@ -86,7 +92,7 @@ async def cmd_processname(message: types.Message, state: FSMContext):
     chat_id = message.chat.id
     if not checker():
         username = message.text
-        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "UTC +3","{0}", "{0}")')
+        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "UTC +3","{0}", "{0}", "{0}", "{0}")')
         await message.answer(f"ура! будем знакомы, <b>{username}!</b>\n"
                              f"чтобы я каждый день присылал тебе идеи для заметок, сначала напиши удобное для тебя время в формате 00:00, "
                              f"например, 06:00 для утра или 18:00 для вечера",
@@ -222,6 +228,37 @@ async def handle_alt_timezone(callback_query: types.callback_query):
         await alt_timezone_confirmation(callback_query.message, alt_timezone)
 
 
+@dp.message(Command("save")) #хэндлер на команду /save для сохранения заметки
+async def cmd_save(message: types.Message, state: FSMContext):
+    chat_id = message.chat.id
+    cur.execute(f"SELECT save_status FROM users WHERE id = ?", (chat_id,))
+    save_status = cur.fetchone()
+    if save_status[0] == 0:
+        await state.set_state(Form.save)
+        await message.answer("ура! ты хочешь написать заметку о сегодняшнем дне! давай я напомню тебе мою идею: ") #добавим идею, когда научимся ее сохранять
+    else:
+        await message.answer("кажется, сегодня ты уже написал заметку :( приходи завтра!")
+
+
+@dp.message(Form.save)  # ждём заметку
+async def cmd_processsave(message: types.Message, state: FSMContext):
+    await state.update_data(save=message.text)
+    chat_id = message.chat.id
+    db.execute(f'UPDATE users SET save_status = ? WHERE id = ?', (1, chat_id))
+    cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
+    points = cur.fetchone()
+    if points[0] > 6:
+        db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 3, chat_id))
+    else:
+        db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 2, chat_id))
+    cur.execute(f"SELECT strike FROM users WHERE id = ?", (chat_id,))
+    strike = cur.fetchone()
+    db.execute(f'UPDATE users SET strike = ? WHERE id = ?', (strike[0] + 1, chat_id))
+    db.commit()
+    await state.set_state(Form.save_added)
+    await message.answer("отлично! твоя заметка сохранена :)\n"
+                         "чтобы проверить баланс, нажми /account")
+
 
 @dp.message(Command("change_name"))  # хэндлер на команду /change_name
 async def cmd_change_name(message: types.Message, state: FSMContext):
@@ -310,6 +347,8 @@ async def get_account(message: types.Message):
     acc = cur.fetchone()
     cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
     points = cur.fetchone()
+    cur.execute(f"SELECT strike FROM users WHERE id = ?", (chat_id,))
+    strike = cur.fetchone()
     cur.execute(f"SELECT time_hours FROM users WHERE id = ?", (chat_id,))
     time_h = cur.fetchone()
     h = "%s" % str(time_h[0]) if time_h[0] >= 10 else "0%s" % str(time_h[0])
@@ -319,6 +358,7 @@ async def get_account(message: types.Message):
     if acc:
         await message.answer(f'твой юзернейм: <b>{acc[0]}</b>\n'
                              f'твой баланс: <b>{points[0]}</b>\n'
+                             f'твой страйк: <b>{strike[0]}</b>\n'
                              f'выбранное время: <b>{h}:{m}</b>', parse_mode='HTML')
     else:
         await message.answer('видимо, у тебя еще нет аккаунта.\n\n'
