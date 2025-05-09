@@ -63,8 +63,8 @@ async def db_database():
     db.commit()
 
 async def send_prompt(bot: Bot, chat_id: int):
-    f = open('notes.txt', encoding='utf-8')
-    number = random.randrange(10) # поменять, когда будет больше промптов
+    f = open('промпты.txt', encoding='utf-8')
+    number = random.randrange(55) # поменять, когда будет больше промптов
     note = f.readlines()
     await bot.send_message(chat_id, text="вот тебе идея для заметки:\n\n" + note[number])
 
@@ -173,7 +173,10 @@ async def choose_timezone(message: types.Message):
                          )
 
 async def send_timezone_confirmation(message: types.Message, timezone: str):
-    await message.answer(f'часовой пояс {timezone[0:3].upper()} +{timezone[4]} выбран!')
+    if timezone.endswith('_10' or '_11' or '_12'):
+        await message.answer(f'часовой пояс {timezone[0:3].upper()} +{timezone[4:6]} выбран!')
+    else:
+        await message.answer(f'часовой пояс {timezone[0:3].upper()} +{timezone[4]} выбран!')
 
 @dp.callback_query()
 async def handle_timezone(callback_query: types.callback_query,):
@@ -245,9 +248,10 @@ async def cmd_processchangedtime(message: types.Message, state: FSMContext):
 @dp.message(Command("commands"))  # хэндлер на команду /commands
 async def cmd_commands(message: types.Message):
     await message.answer('вот, что я уже умею!\n\n'
-                         'create — создать аккаунт! давай скорее познакомимся\n'
+                         '/create — создать аккаунт! давай скорее познакомимся\n'
                          '/account — проверить свои имя, баланс и доступные функции\n'
-                         '/commands — узнать, что я умею делать')
+                         '/commands — узнать, что я умею делать\n'
+                         '/fun - смешная картинка')
 
 
 def get_image():
