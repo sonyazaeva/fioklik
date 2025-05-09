@@ -84,7 +84,7 @@ async def cmd_processname(message: types.Message, state: FSMContext):
     chat_id = message.chat.id
     if not checker():
         username = message.text
-        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "smth","{0}", "{0}")')
+        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "UTC +3","{0}", "{0}")')
         await message.answer(f"ура! будем знакомы, {username}!\n"
                              f"чтобы я каждый день присылал тебе идеи для заметок, сначала напиши удобное для тебя время в формате 00:00, например, 06:00 для утра или 18:00 для вечера")  # тут знакомство заканчивается
 
