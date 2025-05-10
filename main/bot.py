@@ -11,7 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import FSInputFile
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram.types import InlineKeyboardButton
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # --- привязываем код к тг ---
@@ -27,6 +27,7 @@ db = sql.connect('users.db')
 cur = db.cursor()
 prdb = sql.connect('saved_prompts.db')
 cucur = prdb.cursor()
+listik = []
 
 
 # --- создаем датабазу users.db ---
@@ -62,6 +63,10 @@ class Form(StatesGroup):
 
     save = State()
     save_added = State()
+    change_name = State()
+    change_name_added = State()
+    change_time = State()
+    change_time_added = State()
 
 
 # --- хэндлер на команду /start: регистрация ---
@@ -118,7 +123,7 @@ async def cmd_processname(message: types.Message, state: FSMContext) -> None:
             [utc_11, utc_12]]
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=rows)
     await message.answer(text='чтобы я вовремя присылал сообщения, выбери свой часовой пояс!\n\n'
-                              'если ты находишься не в России, то сможешь установить альтернативную таймзону потом :)', reply_markup=keyboard)
+                              'если ты находишься не в России, то сможешь установить другой часовой пояс потом :)', reply_markup=keyboard)
 
 # --- обрабатываем таймзону ---
 @dp.callback_query()
@@ -141,28 +146,32 @@ async def timezone_confirmation(message: types.Message, timezone) -> None:
 # --- третий этап регистрации: получаем время ---
 @dp.message(Form.timezone_set)
 async def cmd_processtime(message: types.Message, state: FSMContext) -> None:
-    if message.text[:2].isdigit() and message.text[3:].isdigit() and message.text[2] == ':':
+    # --- проверяем соответствие формата введенного времени ---
+    try:
         hours, mins = map(int, message.text.split(':'))
-        chat_id = message.chat.id
-        await state.update_data(time_hours=hours, time_mins=mins)
-        if 0 <= hours < 24 and 0 <= mins < 60:
-            db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
-            db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
-        else:
-            await message.answer(
-                "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера")
+    except ValueError:
+        await message.answer("пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера")
+
+    chat_id = message.chat.id
+    await state.update_data(time_hours=hours, time_mins=mins)
+
+    if 0 <= hours < 24 and 0 <= mins < 60:
+        db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
+        db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
+        db.commit()
     else:
         await message.answer("пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера")
-    scheduler.add_job(send_prompt, trigger="cron", hour=hours, minute=mins, id=str(chat_id), kwargs={
-                    "bot": bot,
-                    "chat_id": chat_id},
-                      )
+
+    cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
+    timezone = cur.fetchone()[0]
+    scheduler.add_job(send_prompt, trigger="cron", hour=int(timezone[5:7]) + hours - 3, minute=mins,
+                      id=str(chat_id), kwargs={"bot": bot, "chat_id": chat_id}, )
+
     await message.answer(f'отлично, теперь каждый день в <b>{message.text}</b> я буду присылать тебе идею для заметки о прошедшем дне) '
                          f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!\n\n'
                          f'рад, что мы познакомились! вот, что я теперь о тебе знаю:', parse_mode='HTML')
     await cmd_account(message)
     await state.set_state(Form.time_set)
-    db.commit()
 
 
 # --- хэндлер на команду /account ---
@@ -191,29 +200,46 @@ async def cmd_account(message: types.Message) -> None:
                              f'часовой пояс: <b>{tmz[0]}</b>', parse_mode='HTML')
 
 
-# --- команда /sendprompt ---
-listik = []
+# --- отправка идеи для заметки в выбранное время ---
 async def send_prompt(bot: Bot, chat_id: int):
-    f = open('prompts.txt', encoding='utf-8')
-    number = random.randrange(200)
-    listik.append(number)
-    note = f.readlines()
-    current_prompt = note[number]
-    await bot.send_message(chat_id, text=f"вот тебе идея для заметки:\n<b>{current_prompt}</b>\n\n"
-                                         f"чтобы сохранить свой ответ, воспользуйся командой /save", parse_mode='HTML')
+    cur.execute(f"SELECT save_status FROM users WHERE id = ?", (chat_id,))
+    save_status = cur.fetchone()
+    if save_status[0] == 0:
+        f = open('notes.txt', encoding='utf-8')
+        number = random.randrange(200)
+        listik.append(number)
+        note = f.readlines()
+        current_prompt = note[number]
+        await bot.send_message(chat_id, text=f"вот тебе идея для заметки:\n<b>{current_prompt}</b>\n\n"
+                                             f"чтобы сохранить свой ответ, воспользуйся командой /save", parse_mode='HTML')
+
+        scheduler.add_job(send_alert, trigger="date", run_date=datetime.now() + timedelta(hours=22) - timedelta(seconds=15),
+                          kwargs={"bot": bot, "chat_id": chat_id}, )
+        scheduler.add_job(salary, trigger="date", run_date=datetime.now() + timedelta(days=1),
+                          kwargs={"bot": bot, "chat_id": chat_id}, )
 
 
 # --- хэндлер на команду /save ---
 @dp.message(Command('save'))
 async def cmd_save(message: types.Message, state: FSMContext):
-    await state.set_state(Form.save)
-    await state.update_data(user_response=message.text)
-    await message.answer('оставь заметку отдельным сообщением\n\n'
-                         'ты можешь отправить только одно сообщение!')
+    chat_id = message.chat.id
+    cur.execute(f"SELECT save_status FROM users WHERE id = ?", (chat_id,))
+    save_status = cur.fetchone()
+    if save_status[0] == 0:
+        await state.set_state(Form.save)
+        f = open('notes.txt', encoding='utf-8')
+        note = f.readlines()
+        current_prompt = note[listik[0]]
+        await message.answer(f"ура! ты хочешь написать заметку о сегодняшнем дне! давай я напомню тебе мою идею: {current_prompt}\n\n"
+                             "оставь заметку отдельным сообщением. ты можешь отправить только одно сообщение!")
+    else:
+        await message.answer("кажется, сегодня ты уже написал заметку :( приходи завтра!")
+
 
 @dp.message(Form.save)
 async def save_prompt(message: types.Message, state: FSMContext):
-    f = open('prompts.txt', encoding='utf-8')
+    await state.update_data(save=message.text)
+    f = open('notes.txt', encoding='utf-8')
     note = f.readlines()
     current_prompt = note[listik[0]]
     chat_id = message.chat.id
@@ -227,14 +253,47 @@ async def save_prompt(message: types.Message, state: FSMContext):
             ''', (chat_id, current_prompt, user_response, current_time))
     prdb.commit()
     await state.clear()
-    await message.answer('супер! твой ответ сохранен.\n\n'
-                         'приходи завтра в назначенное время, чтобы снова оставить заметку :)')
+
+    db.execute(f'UPDATE users SET save_status = ? WHERE id = ?', (1, chat_id))
+    cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
+    points = cur.fetchone()
+    if points[0] > 6:
+        db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 3, chat_id))
+    else:
+        db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 2, chat_id))
+    cur.execute(f"SELECT strike FROM users WHERE id = ?", (chat_id,))
+    strike = cur.fetchone()
+    db.execute(f'UPDATE users SET strike = ? WHERE id = ?', (strike[0] + 1, chat_id))
+    db.commit()
+
+    await message.answer("отлично! твоя заметка сохранена! "
+                         'приходи завтра, чтобы снова оставить заметку :)\n\n'
+                         'а чтобы проверить баланс, нажми /account')
     await state.set_state(Form.save_added)
 
+# --- send alert ---
+async def send_alert(bot: Bot, chat_id: int):
+    cur.execute(f"SELECT save_status FROM users WHERE id = ?", (chat_id,))
+    save_status = cur.fetchone()
+    if save_status[0] == 0:
+        await bot.send_message(chat_id, text=f"у тебя осталось два часа, чтобы написать заметку!", parse_mode='HTML')
+
+# --- salary ---
+async def salary(bot: Bot, chat_id: int):
+    cur.execute(f"SELECT save_status FROM users WHERE id = ?", (chat_id,))
+    save_status = cur.fetchone()
+    if save_status[0] == 0:
+        cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
+        points = cur.fetchone()
+        if points != 0:
+            db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points - 1, chat_id))
+            db.commit()
+            await bot.send_message(chat_id, text=f"сегодня я не получил заметку от тебя, поэтому ты теряешь один балл :(", parse_mode='HTML')
+        else:
+            await bot.send_message(chat_id, text=f"мне грустно без тебя :(", parse_mode='HTML')
 
 
 # --- НИЖЕ ЕЩЕ НЕ ЧИСТИЛ!!! ---
-
 
 
 # --- хэндлер на команду /change_name ---
@@ -325,6 +384,10 @@ async def cmd_dontknow(message: types.Message):
 async def main() -> None:
     scheduler.start()
     await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    asyncio.run(main())
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
