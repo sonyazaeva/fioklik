@@ -1,20 +1,20 @@
-import asyncio
 import logging
 import sys
+import asyncio
 import random
 import os
-import requests
 import sqlite3 as sql
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import FSInputFile
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from urllib.parse import quote
+from aiogram.types import FSInputFile
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from aiogram.types import InlineKeyboardButton
 from datetime import datetime
 
+
+# --- привязываем код к тг ---
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
 TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
 bot = Bot(token=TOKEN)
@@ -22,111 +22,84 @@ dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
 
-class Form(StatesGroup):  # создаем состояние для дальнейшей регистрации (тут же можно состояния для других штук оставить)
-    name = State()
-    name_added = State()
-    timezone = State()
-    alt_timezone = State()
-    time = State()
-    time_added = State()
-    change_name = State()
-    change_name_added = State()
-    change_time = State()
-    change_time_added = State()
-    save = State()
-    save_added = State()
-
-
-db = sql.connect('users.db')  # создаем датабазу
+# --- переменные для курсора и связи с датабазами ---
+db = sql.connect('users.db')
 cur = db.cursor()
+prdb = sql.connect('saved_prompts.db')
+cucur = prdb.cursor()
 
 
-@dp.message(Command("start"))  # хэндлер на команду /start
-async def cmd_start(message: types.Message):
-    await message.answer("привет! я Фёклик — друг, который всегда найдёт, чем тебя занять :)\n\n"
-                         "каждый день в определенное время я буду присылать тебе идеи для заметок. "
-                         "за каждую заметку ты будешь получать баллы, с помощью которых сможешь открыть новые функции. "
-                         "например, я буду делиться с тобой мемами, анекдотами и многим-многим другим, что сделает твой день веселее и интереснее.\n\n"
-                         "я бы хотел, чтобы наше общение было более постоянным, поэтому если ты будешь забывать писать заметки, то будешь терять баллы :(\n\n"
-                         "поэтому, пожалуйста, не забывай открывать чатик и писать что-то. не бойся, я напомню тебе о потере страйка!\n\n"
-                         "о том, что я умею делать, ты можешь узнать, нажав /commands!\n\n"
-                         "<b>а чтобы создать аккаунт, нажми /create</b>", parse_mode='HTML')
-
-
-async def db_database():
-    cur.execute('CREATE TABLE IF NOT EXISTS users ('
+# --- создаем датабазу users.db ---
+cur.execute('CREATE TABLE IF NOT EXISTS users ('
                 'id INTEGER PRIMARY KEY, '
                 'name TEXT, '
                 'points INTEGER DEFAULT 0, '
-                'timezone TEXT, '
+                'timezone TEXT DEFAULT NONE, '
                 'time_hours INTEGER DEFAULT 0, '
                 'time_mins INTEGER DEFAULT 0, '
                 'save_status INTEGER DEFAULT 0, '
                 'strike INTEGER DEFAULT 0)'
                 )
-    db.commit()
+db.commit()
 
-async def send_prompt(bot: Bot, chat_id: int):
-    cur.execute(f"SELECT save_status FROM users WHERE id = ?", (chat_id,))
-    save_status = cur.fetchone()
-    if save_status[0] == 0:
-        f = open('notes.txt', encoding='utf-8')
-        number = random.randrange(200) # поменять, когда будет больше промптов
-        note = f.readlines()
-        await bot.send_message(chat_id, text=f"вот тебе идея для заметки:\n\n<b>{note[number]}</b>\n\n"
-                                             f"чтобы сохранить заметку, введи сначала команду /save", parse_mode='HTML')
 
-@dp.message(Command("create")) #хэндлер на команду /create для создания аккаунта
-async def cmd_create(message: types.Message, state: FSMContext):
-    await db_database()
-    await state.set_state(Form.name)
-    await message.answer("давай познакомимся! скажи, как к тебе обращаться?")
+# --- создаем датабазу saved_prompts.db ---
+cucur.execute('CREATE TABLE IF NOT EXISTS saved_prompts ('
+                  'id INTEGER PRIMARY KEY, '
+                  'prompt TEXT, '
+                  'response TEXT, '
+                  'date DATETIME)'
+                  )
+prdb.commit()
 
-@dp.message(Form.name)  # второй этап регистрации (ждем когда придет имя)
-async def cmd_processname(message: types.Message, state: FSMContext):
-    await state.update_data(name=message.text)
-    await state.set_state(Form.name_added)
+
+# --- состояния, которые используются для регистрации ---
+class Form(StatesGroup):
+    started = State()  # регистрация началась > ждем имя
+    name_set = State()  # имя установлено > ждем выбор таймзоны
+    timezone_set = State()  # таймзона установлена > ждем выбор времени
+    time_set = State()  # время установлено > конец!
+
+    save = State()
+    save_added = State()
+
+
+# --- хэндлер на команду /start: регистрация ---
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message, state: FSMContext) -> None:
+    chat_id = message.chat.id
+
+    # --- проверяем, нет ли пользователя в базе ---
     def checker():
         cur.execute("SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
         return cur.fetchone()[0] > 0
+
+    if checker():  # если пользователь уже зарегистрирован
+        cur.execute(f"SELECT name FROM users WHERE id = ?", (chat_id,))
+        username = cur.fetchone()
+        await message.answer(f'<b>{username[0]}</b>, как здорово, что ты тут!', parse_mode='HTML')
+    else:  # если пользователь не зарегистрирован
+        await state.set_state(Form.started)
+        await message.answer('привет! я Фёклик — друг, который всегда найдёт, чем тебя занять :)\n\n'
+                             'каждый день в определенное время я буду присылать тебе идеи для заметок. '
+                             'за каждую заметку ты будешь получать баллы, с помощью которых сможешь открыть новые функции. '
+                             'например, я буду делиться с тобой мемами, анекдотами и многим-многим другим, что сделает твой день веселее и интереснее.\n\n'
+                             'я бы хотел, чтобы наше общение было более постоянным, поэтому если ты будешь забывать писать заметки, то будешь терять баллы :(\n\n'
+                             'поэтому, пожалуйста, не забывай открывать чатик и писать что-то. не бойся, я напомню тебе о потере страйка!\n\n'
+                             'а сейчас давай познакомимся! скажи, как к тебе обращаться?')
+
+
+# --- второй этап: получаем имя и добавляем пользователя в базу, настраиваем таймзону ---
+@dp.message(Form.started)
+async def cmd_processname(message: types.Message, state: FSMContext) -> None:
+    await state.set_state(Form.name_set)
     chat_id = message.chat.id
-    if not checker():
-        username = message.text
-        db.execute(f'INSERT INTO users VALUES ("{chat_id}", "{username}", "{0}", "UTC +3","{0}", "{0}", "{0}", "{0}")')
-        await message.answer(f"ура! будем знакомы, <b>{username}!</b>\n"
-                             f"чтобы я каждый день присылал тебе идеи для заметок, сначала напиши удобное для тебя время в формате 00:00, "
-                             f"например, 06:00 для утра или 18:00 для вечера",
-                             parse_mode='HTML')  # тут знакомство заканчивается
+    username = message.text
+    db.execute(f'INSERT INTO users VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (chat_id, username, 0, 'UTC +03:00', 0, 0, 0, 0))
+    await message.answer(f'ура! будем знакомы, <b>{username}</b>! '
+                         f'если что-то пошло не так, не переживай: ты сможешь изменить имя позже :)', parse_mode='HTML')
 
-        db.commit()
-        await state.set_state(Form.time)
-    else:
-        await message.answer('<b>похоже, у тебя уже есть аккаунт!</b> \n\n'
-                             'ты можешь посмотреть свою статистику по команде /stats', parse_mode='HTML')
-
-@dp.message(Form.time)  # третий этап регистрации (ждем когда придет удобное время)
-async def cmd_processtime(message: types.Message, state: FSMContext):
-    hours, mins = map(int, message.text.split(':'))
-    chat_id = message.chat.id
-    await state.update_data(time_hours=hours, time_mins=mins)
-    if 0 <= hours < 24 and 0 <= mins < 60:
-        db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
-        db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
-    else:
-        await message.answer("пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера")
-    scheduler.add_job(send_prompt, trigger="cron", hour=hours, minute=mins, id=str(chat_id), kwargs={
-                    "bot": bot,
-                    "chat_id": chat_id},
-                      )
-    await message.answer(f'отлично, теперь каждый день в <b>{message.text}</b> я буду присылать тебе идею для заметки о прошедшем дне) '
-                         f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!\n\n'
-                         f'теперь тебе нужно выбрать часовой пояс, в котором ты находишься.\n\n'
-                         f'<b>для этого вызови команду /timezone и нажми на нужную кнопку под сообщением.</b>', parse_mode='HTML')
-    db.commit()
-    await state.set_state(Form.time_added)
-
-@dp.message(Command('timezone'))
-async def choose_timezone(message: types.Message):
+    # --- выбираем таймзону ---
     utc_2 = InlineKeyboardButton(text='UTC +02:00', callback_data='UTC +02:00')
     utc_3 = InlineKeyboardButton(text='UTC +03:00', callback_data='UTC +03:00')
     utc_4 = InlineKeyboardButton(text='UTC +04:00', callback_data='UTC +04:00')
@@ -138,129 +111,134 @@ async def choose_timezone(message: types.Message):
     utc_10 = InlineKeyboardButton(text='UTC +10:00', callback_data='UTC +10:00')
     utc_11 = InlineKeyboardButton(text='UTC +11:00', callback_data='UTC +11:00')
     utc_12 = InlineKeyboardButton(text='UTC +12:00', callback_data='UTC +12:00')
-    other = InlineKeyboardButton(text='другое!', callback_data='не')
 
-    rowa, rowb, rowc, rowd = [utc_2, utc_3, utc_4], [utc_5, utc_6, utc_7], [utc_8, utc_9, utc_10], [utc_11, utc_12, other]
-    rows = [rowa, rowb, rowc, rowd]
+    rows = [[utc_2, utc_3, utc_4],
+            [utc_5, utc_6, utc_7],
+            [utc_8, utc_9, utc_10],
+            [utc_11, utc_12]]
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=rows)
-    await message.answer(text='Выбери тот часовой пояс, в котором ты находишься', reply_markup=keyboard)
-async def timezone_confirmation(message: types.Message, timezone: str):
-    await message.answer(f'часовой пояс {timezone} выбран!\n\n'
-                         f'если тебе нужен другой часовой пояс, воспользуйся командой /alt_timezone\n\n'
-                         f'если ты ошибся, снова воспользуйся /timezone')
+    await message.answer(text='чтобы я вовремя присылал сообщения, выбери свой часовой пояс!\n\n'
+                              'если ты находишься не в России, то сможешь установить альтернативную таймзону потом :)', reply_markup=keyboard)
 
+# --- обрабатываем таймзону ---
 @dp.callback_query()
-async def handle_timezone(callback_query: types.callback_query):
+async def handle_timezone(callback_query: types.callback_query, state: FSMContext):
         chat_id = callback_query.from_user.id
-        username = callback_query.from_user.username
         timezone = callback_query.data
-
-        cur.execute("SELECT 1 FROM users WHERE id = ?", (chat_id,))
-        if cur.fetchone():
-            cur.execute("UPDATE users SET timezone = ? WHERE id = ?", (timezone, chat_id))
-        else:
-            cur.execute("INSERT INTO users VALUES (?, ?, ?)", (chat_id, username, timezone))
-        db.commit()
+        cur.execute("UPDATE users SET timezone = ? WHERE id = ?", (timezone, chat_id))
         await callback_query.answer(':з')
         await timezone_confirmation(callback_query.message, timezone)
+        await state.set_state(Form.timezone_set)
+
+# --- подтверждаем выбор часового пояса ---
+async def timezone_confirmation(message: types.Message, timezone) -> None:
+    await message.answer(f'часовой пояс <b>{timezone}</b> выбран! '
+                         f'ты всегда сможешь изменить его в настройках аккаунта.\n\n'
+                         f'а сейчас, пожалуйста, напиши, в какое время тебе будет удобно получать идеи для заметок? '
+                         f'укажи его в формате 00:00. например, 06:00 для утра или 18:00 для вечера', parse_mode='HTML')
 
 
-@dp.message(Command('alt_timezone'))
-async def choose_alt_timezone(message: types.Message):
-            utc_neg12 = InlineKeyboardButton(text='UTC -12:00', callback_data='UTC -12:00')
-            utc_neg11 = InlineKeyboardButton(text='UTC -11:00', callback_data='UTC -11:00')
-            utc_neg10 = InlineKeyboardButton(text='UTC -10:00', callback_data='UTC -10:00')
-            utc_neg930 = InlineKeyboardButton(text='UTC -09:30', callback_data='UTC -09:30')
-            utc_neg9 = InlineKeyboardButton(text='UTC -09:00', callback_data='UTC -09:00')
-            utc_neg8 = InlineKeyboardButton(text='UTC -08:00', callback_data='UTC -08:00')
-            utc_neg7 = InlineKeyboardButton(text='UTC -07:00', callback_data='UTC -07:00')
-            utc_neg6 = InlineKeyboardButton(text='UTC -06:00', callback_data='UTC -06:00')
-            utc_neg5 = InlineKeyboardButton(text='UTC -05:00', callback_data='UTC -05:00')
-            utc_neg4 = InlineKeyboardButton(text='UTC -04:00', callback_data='UTC -04:00')
-            utc_neg330 = InlineKeyboardButton(text='UTC -03:30', callback_data='UTC -03:30')
-            utc_neg3 = InlineKeyboardButton(text='UTC -03:00', callback_data='UTC -03:00')
-            utc_neg2 = InlineKeyboardButton(text='UTC -02:00', callback_data='UTC -02:00')
-            utc_neg1 = InlineKeyboardButton(text='UTC -01:00', callback_data='UTC -01:00')
-            utc_0 = InlineKeyboardButton(text='UTC +00:00', callback_data='UTC +00:00')
-            utc_1 = InlineKeyboardButton(text='UTC +01:00', callback_data='UTC +01:00')
-            utc_330 = InlineKeyboardButton(text='UTC +03:30', callback_data='UTC +03:30')
-            utc_430 = InlineKeyboardButton(text='UTC +04:30', callback_data='UTC +04:30')
-            utc_530 = InlineKeyboardButton(text='UTC +05:30', callback_data='UTC +05:30')
-            utc_545 = InlineKeyboardButton(text='UTC +05:45', callback_data='UTC +05:45')
-            utc_630 = InlineKeyboardButton(text='UTC +06:30', callback_data='UTC +06:30')
-            utc_845 = InlineKeyboardButton(text='UTC +08:45', callback_data='UTC +08:45')
-            utc_930 = InlineKeyboardButton(text='UTC +09:30', callback_data='UTC +09:30')
-            utc_1030 = InlineKeyboardButton(text='UTC +10:30', callback_data='UTC +10:30')
-            utc_1245 = InlineKeyboardButton(text='UTC +12:45', callback_data='UTC +12:45')
-            utc_13 = InlineKeyboardButton(text='UTC +13:00', callback_data='UTC +13:00')
-            utc_14 = InlineKeyboardButton(text='UTC +14:00', callback_data='UTC +14:00')
-
-            linesa = [utc_neg12, utc_neg11, utc_neg10, utc_neg930]
-            linesb = [utc_neg9, utc_neg8, utc_neg7, utc_neg6]
-            linesc = [utc_neg5, utc_neg4, utc_neg330, utc_neg3]
-            linesd = [utc_neg2, utc_neg1, utc_0]
-            linese = [utc_1, utc_330, utc_430, utc_530]
-            linesf = [utc_545, utc_630, utc_845, utc_930]
-            linesg = [utc_1030, utc_1245, utc_13, utc_14]
-            lines = [linesa, linesb, linesc, linesd, linese, linesf, linesg]
-
-            alt_keyboard = types.InlineKeyboardMarkup(inline_keyboard=lines)
-            await message.answer(text='выбери другой часовой пояс:',
-                                 reply_markup=alt_keyboard)
-async def alt_timezone_confirmation(message: types.Message, alt_timezone: str):
-    await message.answer(f'часовой пояс {alt_timezone} выбран!\n\n'
-                         f'если тебе нужен другой часовой пояс, воспользуйся командой /alt_timezone\n\n'
-                         f'если ты ошибся, снова воспользуйся /timezone')
-
-@dp.callback_query()
-async def handle_alt_timezone(callback_query: types.callback_query):
-        chat_id = callback_query.from_user.id
-        username = callback_query.from_user.username
-        alt_timezone = callback_query.data
-
-        cur.execute("SELECT 1 FROM users WHERE id = ?", (chat_id,))
-        if cur.fetchone():
-            cur.execute("UPDATE users SET timezone = ? WHERE id = ?", (alt_timezone, chat_id))
+# --- третий этап регистрации: получаем время ---
+@dp.message(Form.timezone_set)
+async def cmd_processtime(message: types.Message, state: FSMContext) -> None:
+    if message.text[:2].isdigit() and message.text[3:].isdigit() and message.text[2] == ':':
+        hours, mins = map(int, message.text.split(':'))
+        chat_id = message.chat.id
+        await state.update_data(time_hours=hours, time_mins=mins)
+        if 0 <= hours < 24 and 0 <= mins < 60:
+            db.execute(f'UPDATE users SET time_hours = ? WHERE id = ?', (hours, chat_id))
+            db.execute(f'UPDATE users SET time_mins = ? WHERE id = ?', (mins, chat_id))
         else:
-            cur.execute("INSERT INTO users VALUES (?, ?, ?)", (chat_id, username, alt_timezone))
-        db.commit()
-        await callback_query.answer(':з')
-        await alt_timezone_confirmation(callback_query.message, alt_timezone)
-
-
-@dp.message(Command("save")) #хэндлер на команду /save для сохранения заметки
-async def cmd_save(message: types.Message, state: FSMContext):
-    chat_id = message.chat.id
-    cur.execute(f"SELECT save_status FROM users WHERE id = ?", (chat_id,))
-    save_status = cur.fetchone()
-    if save_status[0] == 0:
-        await state.set_state(Form.save)
-        await message.answer("ура! ты хочешь написать заметку о сегодняшнем дне! давай я напомню тебе мою идею: ") #добавим идею, когда научимся ее сохранять
+            await message.answer(
+                "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера")
     else:
-        await message.answer("кажется, сегодня ты уже написал заметку :( приходи завтра!")
+        await message.answer("пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера")
+    scheduler.add_job(send_prompt, trigger="cron", hour=hours, minute=mins, id=str(chat_id), kwargs={
+                    "bot": bot,
+                    "chat_id": chat_id},
+                      )
+    await message.answer(f'отлично, теперь каждый день в <b>{message.text}</b> я буду присылать тебе идею для заметки о прошедшем дне) '
+                         f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!\n\n'
+                         f'рад, что мы познакомились! вот, что я теперь о тебе знаю:', parse_mode='HTML')
+    await cmd_account(message)
+    await state.set_state(Form.time_set)
+    db.commit()
 
 
-@dp.message(Form.save)  # ждём заметку
-async def cmd_processsave(message: types.Message, state: FSMContext):
-    await state.update_data(save=message.text)
+# --- хэндлер на команду /account ---
+@dp.message(Command('account'))
+async def cmd_account(message: types.Message) -> None:
     chat_id = message.chat.id
-    db.execute(f'UPDATE users SET save_status = ? WHERE id = ?', (1, chat_id))
+    cur.execute(f"SELECT name FROM users WHERE id = ?", (chat_id,))
+    acc = cur.fetchone()
     cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
     points = cur.fetchone()
-    if points[0] > 6:
-        db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 3, chat_id))
-    else:
-        db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 2, chat_id))
     cur.execute(f"SELECT strike FROM users WHERE id = ?", (chat_id,))
     strike = cur.fetchone()
-    db.execute(f'UPDATE users SET strike = ? WHERE id = ?', (strike[0] + 1, chat_id))
-    db.commit()
+    cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
+    tmz = cur.fetchone()
+    cur.execute(f"SELECT time_hours FROM users WHERE id = ?", (chat_id,))
+    time_h = cur.fetchone()
+    h = "%s" % str(time_h[0]) if time_h[0] >= 10 else "0%s" % str(time_h[0])
+    cur.execute(f"SELECT time_mins FROM users WHERE id = ?", (chat_id,))
+    time_m = cur.fetchone()
+    m = "%s" % str(time_m[0]) if time_m[0] >= 10 else "0%s" % str(time_m[0])
+    if acc:
+        await message.answer(f'твой юзернейм: <b>{acc[0]}</b>\n'
+                             f'твой баланс: <b>{points[0]}</b>\n'
+                             f'твой страйк: <b>{strike[0]}</b>\n'
+                             f'выбранное время: <b>{h}:{m}</b>\n'
+                             f'часовой пояс: <b>{tmz[0]}</b>', parse_mode='HTML')
+
+
+# --- команда /sendprompt ---
+listik = []
+async def send_prompt(bot: Bot, chat_id: int):
+    f = open('prompts.txt', encoding='utf-8')
+    number = random.randrange(200)
+    listik.append(number)
+    note = f.readlines()
+    current_prompt = note[number]
+    await bot.send_message(chat_id, text=f"вот тебе идея для заметки:\n<b>{current_prompt}</b>\n\n"
+                                         f"чтобы сохранить свой ответ, воспользуйся командой /save", parse_mode='HTML')
+
+
+# --- хэндлер на команду /save ---
+@dp.message(Command('save'))
+async def cmd_save(message: types.Message, state: FSMContext):
+    await state.set_state(Form.save)
+    await state.update_data(user_response=message.text)
+    await message.answer('оставь заметку отдельным сообщением\n\n'
+                         'ты можешь отправить только одно сообщение!')
+
+@dp.message(Form.save)
+async def save_prompt(message: types.Message, state: FSMContext):
+    f = open('prompts.txt', encoding='utf-8')
+    note = f.readlines()
+    current_prompt = note[listik[0]]
+    chat_id = message.chat.id
+    user_response = message.text
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    cucur.execute('''
+                INSERT OR REPLACE INTO saved_prompts 
+                (id, prompt, response, date)
+                VALUES (?, ?, ?, ?)
+            ''', (chat_id, current_prompt, user_response, current_time))
+    prdb.commit()
+    await state.clear()
+    await message.answer('супер! твой ответ сохранен.\n\n'
+                         'приходи завтра в назначенное время, чтобы снова оставить заметку :)')
     await state.set_state(Form.save_added)
-    await message.answer("отлично! твоя заметка сохранена :)\n"
-                         "чтобы проверить баланс, нажми /account")
 
 
-@dp.message(Command("change_name"))  # хэндлер на команду /change_name
+
+# --- НИЖЕ ЕЩЕ НЕ ЧИСТИЛ!!! ---
+
+
+
+# --- хэндлер на команду /change_name ---
+@dp.message(Command("change_name"))
 async def cmd_change_name(message: types.Message, state: FSMContext):
     def checker():
         cur.execute("SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
@@ -283,7 +261,8 @@ async def cmd_processchangedname(message: types.Message, state: FSMContext):
     await state.set_state(Form.change_name_added)
 
 
-@dp.message(Command("change_time"))  # хэндлер на команду /change_time
+# --- хэндлер на команду /change_time ---
+@dp.message(Command("change_time"))
 async def cmd_change_time(message: types.Message, state: FSMContext):
     def checker():
         cur.execute("SELECT COUNT(*) FROM users WHERE id = ?", (chat_id,))
@@ -297,7 +276,8 @@ async def cmd_change_time(message: types.Message, state: FSMContext):
         await message.answer("ты можешь выбрать другое время! пожалуйста, введи его в формате 00:00, "
                              "например, 06:00 для утра или 18:00 для вечера")
 
-@dp.message(Form.change_time)  # ждем когда придет новое время
+# ждем время
+@dp.message(Form.change_time)
 async def cmd_processchangedtime(message: types.Message, state: FSMContext):
     hours, mins = map(int, message.text.split(':'))
     chat_id = message.chat.id
@@ -316,7 +296,6 @@ async def cmd_processchangedtime(message: types.Message, state: FSMContext):
 @dp.message(Command("commands"))  # хэндлер на команду /commands
 async def cmd_commands(message: types.Message):
     await message.answer('вот, что я уже умею!\n\n'
-                         '/create — создать аккаунт! давай скорее познакомимся :)\n'
                          '/account — проверить свои имя, баланс и доступные функции\n'
                          '/commands — узнать, что я умею делать\n'
                          '/fun - смешная картинка')
@@ -326,7 +305,8 @@ def get_image():
     images = [x for x in os.listdir(r'fioklik_images')]
     return os.path.join(r'fioklik_images', random.choice(images))
 
-@dp.message(Command("fun")) # хэндлер на картиночки
+# --- хэндлер на /fun ---
+@dp.message(Command("fun"))
 async def cmd_fun(message: types.Message):
     image_path = get_image()
     if image_path:
@@ -334,45 +314,15 @@ async def cmd_fun(message: types.Message):
         await message.answer_photo(photo, caption='картиночка для тебя :з')
 
 
-@dp.message(Command('chat_id')) # айди
-async def get_chat_id(message: types.Message):
-    chat_id = message.chat.id
-    await message.answer(f'айди этого чата: {chat_id}')
-
-
-@dp.message(Command('account')) # статистико аккаунто
-async def get_account(message: types.Message):
-    chat_id = message.chat.id
-    cur.execute(f"SELECT name FROM users WHERE id = ?", (chat_id,))
-    acc = cur.fetchone()
-    cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
-    points = cur.fetchone()
-    cur.execute(f"SELECT strike FROM users WHERE id = ?", (chat_id,))
-    strike = cur.fetchone()
-    cur.execute(f"SELECT time_hours FROM users WHERE id = ?", (chat_id,))
-    time_h = cur.fetchone()
-    h = "%s" % str(time_h[0]) if time_h[0] >= 10 else "0%s" % str(time_h[0])
-    cur.execute(f"SELECT time_mins FROM users WHERE id = ?", (chat_id,))
-    time_m = cur.fetchone()
-    m = "%s" % str(time_m[0]) if time_m[0] >= 10 else "0%s" % str(time_m[0])
-    if acc:
-        await message.answer(f'твой юзернейм: <b>{acc[0]}</b>\n'
-                             f'твой баланс: <b>{points[0]}</b>\n'
-                             f'твой страйк: <b>{strike[0]}</b>\n'
-                             f'выбранное время: <b>{h}:{m}</b>', parse_mode='HTML')
-    else:
-        await message.answer('видимо, у тебя еще нет аккаунта.\n\n'
-                             '<b>ты можешь создать его по команде /create</b>', parse_mode='HTML')
-
-
-@dp.message(F.text)  # хэндлер на любой текст
+# --- обработка неизвестных сообщений ---
+@dp.message(F.text)
 async def cmd_dontknow(message: types.Message):
     await message.answer(
-        "я пока не понимаю твои сообщения, но уже скоро смогу быть твои другом!\n\n"
-        "о том, что я умею делать, ты можешь узнать, нажав /commands!")
+        'кажется, я тебя не понимаю( попробуй выбрать одну из доступных комманд, нажав /commands')
 
 
-async def main() -> None: # весь этот блок контролирует новые апдейты в чате (чтобы все работало беспрерывно)
+# --- запуск поллинга и расписания---
+async def main() -> None:
     scheduler.start()
     await dp.start_polling(bot)
 
