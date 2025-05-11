@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 # --- привязываем код к тг ---
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
-TOKEN = "7844979667:AAEgyWBqPbAk6dyRZC0l5uV1lmMcM1_AZUw"
+TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
@@ -65,6 +65,13 @@ class Form(StatesGroup):
     change_time_added = State()
     timezone_changing = State()
 
+
+# --- хэндлер на /cancel ---
+@dp.message(Command("cancel"))
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer('все действия отменены :)')
+  
 
 # --- хэндлер на команду /start: регистрация ---
 @dp.message(Command("start"))
