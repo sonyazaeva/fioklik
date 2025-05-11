@@ -116,11 +116,12 @@ async def cmd_processname(message: types.Message, state: FSMContext) -> None:
     utc_10 = InlineKeyboardButton(text='UTC +10:00', callback_data='UTC +10:00')
     utc_11 = InlineKeyboardButton(text='UTC +11:00', callback_data='UTC +11:00')
     utc_12 = InlineKeyboardButton(text='UTC +12:00', callback_data='UTC +12:00')
+    other = InlineKeyboardButton(text='другое!', callback_data='other')
 
     rows = [[utc_2, utc_3, utc_4],
             [utc_5, utc_6, utc_7],
             [utc_8, utc_9, utc_10],
-            [utc_11, utc_12]]
+            [utc_11, utc_12, other]]
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=rows)
     await message.answer(text='чтобы я вовремя присылал сообщения, выбери свой часовой пояс!\n\n'
                               'если ты находишься не в России, то сможешь установить другой часовой пояс потом :)', reply_markup=keyboard)
@@ -129,18 +130,28 @@ async def cmd_processname(message: types.Message, state: FSMContext) -> None:
 @dp.callback_query()
 async def handle_timezone(callback_query: types.callback_query, state: FSMContext):
         chat_id = callback_query.from_user.id
-        timezone = callback_query.data
+        callback = callback_query.data
+        if callback == 'other':
+            timezone = 'UTC +03:00'
+        else:
+            timezone = callback
         cur.execute("UPDATE users SET timezone = ? WHERE id = ?", (timezone, chat_id))
         await callback_query.answer(':з')
-        await timezone_confirmation(callback_query.message, timezone)
+        await timezone_confirmation(callback_query.message, callback)
         await state.set_state(Form.timezone_set)
 
 # --- подтверждаем выбор часового пояса ---
-async def timezone_confirmation(message: types.Message, timezone) -> None:
-    await message.answer(f'часовой пояс <b>{timezone}</b> выбран! '
-                         f'ты всегда сможешь изменить его в настройках аккаунта.\n\n'
-                         f'а сейчас, пожалуйста, напиши, в какое время тебе будет удобно получать идеи для заметок? '
-                         f'укажи его в формате 00:00. например, 06:00 для утра или 18:00 для вечера', parse_mode='HTML')
+async def timezone_confirmation(message: types.Message, callback) -> None:
+    if callback == 'other':
+        await message.answer(f'часовой пояс пока не выбран, но я установил <b>UTC +03:00</b> по умолчанию. '
+                             f'ты всегда сможешь изменить его в настройках аккаунта.\n\n'
+                             f'а сейчас, пожалуйста, напиши, в какое время тебе будет удобно получать идеи для заметок? '
+                             f'укажи его в формате 00:00. например, 06:00 для утра или 18:00 для вечера', parse_mode='HTML')
+    else:
+        await message.answer(f'часовой пояс <b>{callback}</b> выбран! '
+                             f'ты всегда сможешь изменить его в настройках аккаунта.\n\n'
+                             f'а сейчас, пожалуйста, напиши, в какое время тебе будет удобно получать идеи для заметок? '
+                             f'укажи его в формате 00:00. например, 06:00 для утра или 18:00 для вечера', parse_mode='HTML')
 
 
 # --- третий этап регистрации: получаем время ---
