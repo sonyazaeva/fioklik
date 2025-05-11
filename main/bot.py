@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 # --- привязываем код к тг ---
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
-TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
+TOKEN = "7844979667:AAEgyWBqPbAk6dyRZC0l5uV1lmMcM1_AZUw"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
@@ -52,9 +52,10 @@ prdb.commit()
 # --- состояния, которые используются для регистрации ---
 class Form(StatesGroup):
     started = State()  # регистрация началась > ждем имя
-    name_set = State()  # имя установлено > ждем выбор таймзоны
-    timezone_set = State()  # таймзона установлена > ждем выбор времени
+    name_set = State()  # имя установлено > предлагаем выбрать таймзону
+    timezone_set = State()  # подверждаем выбор таймзоны > ждем время
     time_set = State()  # время установлено > конец!
+
 # --- состояния, которые используются для других команд ---
     save = State()
     save_added = State()
@@ -62,6 +63,7 @@ class Form(StatesGroup):
     change_name_added = State()
     change_time = State()
     change_time_added = State()
+    timezone_changing = State()
 
 
 # --- хэндлер на команду /start: регистрация ---
@@ -123,7 +125,7 @@ async def cmd_processname(message: types.Message, state: FSMContext) -> None:
                          reply_markup=keyboard)
 
 # --- обрабатываем таймзону ---
-@dp.callback_query()
+@dp.callback_query(Form.name_set)
 async def handle_timezone(callback_query: types.callback_query, state: FSMContext):
     chat_id = callback_query.from_user.id
     callback = callback_query.data
@@ -180,6 +182,8 @@ async def cmd_processtime(message: types.Message, state: FSMContext) -> None:
                          f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!\n\n'
                          f'рад, что мы познакомились! вот, что я теперь о тебе знаю:', parse_mode='HTML')
     await cmd_account(message)
+    await cmd_commands(message)
+    await cmd_info(message)
     await state.set_state(Form.time_set)
 
 
@@ -388,10 +392,9 @@ async def cmd_processchangedtime(message: types.Message, state: FSMContext):
     await state.set_state(Form.change_time_added)
 
 
-
 # --- хэндлер на команду change_timezone ---
 @dp.message(Command('change_timezone'))
-async def choose_timezone(message: types.Message):
+async def choose_timezone(message: types.Message, state: FSMContext):
     utc_2 = InlineKeyboardButton(text='UTC +02:00', callback_data='UTC +02:00')
     utc_3 = InlineKeyboardButton(text='UTC +03:00', callback_data='UTC +03:00')
     utc_4 = InlineKeyboardButton(text='UTC +04:00', callback_data='UTC +04:00')
@@ -414,9 +417,10 @@ async def choose_timezone(message: types.Message):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=rows)
     await message.answer(text='выбери часовой пояс, в котором ты находишься, чтобы я вовремя присылал сообщения!',
                          reply_markup=keyboard)
+    await state.set_state(Form.timezone_changing)
 
 
-async def timezone_confirmation(message: types.Message, timezone):
+async def change_timezone_confirmation(message: types.Message, timezone):
     chat_id = message.chat.id
     if timezone != 'other':
         await message.answer(f'часовой пояс {timezone} установлен!\n\n')
@@ -429,7 +433,7 @@ async def timezone_confirmation(message: types.Message, timezone):
         await choose_alt_timezone(message)
 
 
-@dp.callback_query()
+@dp.callback_query(Form.timezone_changing)
 async def handle_timezone(callback_query: types.callback_query):
     chat_id = callback_query.from_user.id
     username = callback_query.from_user.username
@@ -442,7 +446,7 @@ async def handle_timezone(callback_query: types.callback_query):
         cur.execute("INSERT INTO users VALUES (?, ?, ?)", (chat_id, username, timezone))
     db.commit()
     await callback_query.answer(':з')
-    await timezone_confirmation(callback_query.message, timezone)
+    await change_timezone_confirmation(callback_query.message, timezone)
 
 
 # --- альтернативные зоны ---
@@ -509,12 +513,35 @@ async def handle_alt_timezone(callback_query: types.callback_query):
     await alt_timezone_confirmation(callback_query.message, alt_timezone)
 
 
-@dp.message(Command("commands"))  # хэндлер на команду /commands
+# --- хэндлер на команду /commands ---
+@dp.message(Command("commands"))
 async def cmd_commands(message: types.Message):
-    await message.answer('вот, что я уже умею!\n\n'
-                         '/account — проверить свои имя, баланс и доступные функции\n'
-                         '/commands — узнать, что я умею делать\n'
-                         '/fun - смешная картинка')
+    await message.answer(
+        "давай расскажу о том, что я умею!\n\n"
+        "<b>/account</b> — проверить свои имя, баланс и доступные функции или отредактировать аккаунт\n"
+        "<b>/shop</b> — открыть магазин и купить какую-нибудь функцию (мне уже не терпится отправить тебе мем!) \n"
+        "<b>/info</b> — узнать о том, как все устроено и как зарабатывать очки", parse_mode='HTML'
+    )
+
+
+# --- хэндлер на команду /info ---
+@dp.message(Command("info"))
+async def cmd_info(message: types.Message):
+    await message.answer(
+        "<b>как тут все устроено?</b>\n\n"
+        "каждый день в то время, которые ты установил при регистрации, я буду присылать тебе идею для заметки. "
+        "чтобы оставить заметку, тебе нужно отправить команду /save. за неё ты будешь получать 2 балла.\n\n"
+        "если каждый день в течение недели ты будешь оставлять заметки, то дальше каждая следующая будет приносить тебе целых 3 балла) "
+        "правда если ты пропустишь один день, то у тебя снимется 1 балл и страйк обнулится... "
+        "не бойся, я напомню тебе об этом за два часа до конца суток с момента отправки идеи :)\n\n"
+        "если ты поймешь, что время, в которое я присылаю тебе идею, не самое удобное, "
+        "то всегда сможешь изменить его в настройках аккаунта с помощью /change_time\n\n"
+        "<b>зачем нужны баллы?</b>\n\n"
+        "я могу отправлять не только идеи для заметок, но и другие штуки) "
+        "чтобы открыть новую функцию, копи баллы и покупай в магазине с помощью /shop. "
+        "открыв новую функцию, ты сможешь вызывать её один раз в день "
+        "и получать какую-то прихолюху (мем, анекдот, тестик или волчью цитатку).\n\nвот так вот :)", parse_mode='HTML'
+    )
 
 
 # --- берем картиночки ---
