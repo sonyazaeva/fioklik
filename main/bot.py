@@ -204,12 +204,28 @@ async def cmd_account(message: types.Message) -> None:
     time_m = cur.fetchone()
     m = "%s" % str(time_m[0]) if time_m[0] >= 10 else "0%s" % str(time_m[0])
     if acc:
-        await message.answer(f'твой юзернейм: <b>{acc[0]}</b>\n'
-                             f'твой баланс: <b>{points[0]}</b>\n'
-                             f'твой страйк: <b>{strike[0]}</b>\n'
-                             f'выбранное время: <b>{h}:{m}</b>\n'
-                             f'часовой пояс: <b>{tmz[0]}</b>', parse_mode='HTML')
+        await message.answer(
+            f"твой юзернейм: <b>{acc[0]}</b>\n"
+            f"твой баланс: <b>{points[0]}</b>\n"
+            f"твой страйк: <b>{strike[0]}</b>\n"
+            f"выбранное время: <b>{h}:{m}</b>\n"
+            f"часовой пояс: <b>{tmz[0]}</b>\n\n"
+            f"если ты хочешь что-то изменить, нажми /edit_account",
+            parse_mode="HTML",
+        )
 
+
+# --- хэндлер на команду /edit_account ---
+@dp.message(Command("edit_account"))
+async def cmd_edit_account(message: types.Message) -> None:
+    await message.answer(
+        f"ух, как мы сейчас все поменяем!\n\n"
+        f"<b>/change_name</b> - изменить имя\n"
+        f"<b>/change_time</b> - изменить время, в которое ты хочешь получать идеи для заметок\n"
+        f"<b>/change_timezone</b> - изменить часовой пояс\n",
+        parse_mode="HTML",
+    )
+  
 
 # --- отправка идеи для заметки в выбранное время ---
 async def send_prompt(bot: Bot, chat_id: int):
@@ -371,6 +387,120 @@ async def cmd_commands(message: types.Message):
                          '/fun - смешная картинка')
 
 
+# --- хэндлер на команду change_timezone ---
+@dp.message(Command('change_timezone'))
+async def choose_timezone(message: types.Message):
+    utc_2 = InlineKeyboardButton(text='UTC +02:00', callback_data='UTC +02:00')
+    utc_3 = InlineKeyboardButton(text='UTC +03:00', callback_data='UTC +03:00')
+    utc_4 = InlineKeyboardButton(text='UTC +04:00', callback_data='UTC +04:00')
+    utc_5 = InlineKeyboardButton(text='UTC +05:00', callback_data='UTC +05:00')
+    utc_6 = InlineKeyboardButton(text='UTC +06:00', callback_data='UTC +06:00')
+    utc_7 = InlineKeyboardButton(text='UTC +07:00', callback_data='UTC +07:00')
+    utc_8 = InlineKeyboardButton(text='UTC +08:00', callback_data='UTC +08:00')
+    utc_9 = InlineKeyboardButton(text='UTC +09:00', callback_data='UTC +09:00')
+    utc_10 = InlineKeyboardButton(text='UTC +10:00', callback_data='UTC +10:00')
+    utc_11 = InlineKeyboardButton(text='UTC +11:00', callback_data='UTC +11:00')
+    utc_12 = InlineKeyboardButton(text='UTC +12:00', callback_data='UTC +12:00')
+    other = InlineKeyboardButton(text='другое!', callback_data='other')
+
+    rows = [
+        [utc_2, utc_3, utc_4],
+        [utc_5, utc_6, utc_7],
+        [utc_8, utc_9, utc_10],
+        [utc_11, utc_12, other],
+    ]
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=rows)
+    await message.answer(text='выбери часовой пояс, в котором ты находишься, чтобы я вовремя присылал сообщения!', reply_markup=keyboard)
+
+
+async def timezone_confirmation(message: types.Message, timezone):
+    if timezone != 'other':
+        await message.answer(f'часовой пояс {timezone} установлен!\n\n')
+    else:
+        await choose_alt_timezone(message)
+
+@dp.callback_query()
+async def handle_timezone(callback_query: types.callback_query):
+    chat_id = callback_query.from_user.id
+    username = callback_query.from_user.username
+    timezone = callback_query.data
+
+    cur.execute("SELECT 1 FROM users WHERE id = ?", (chat_id,))
+    if cur.fetchone():
+        cur.execute("UPDATE users SET timezone = ? WHERE id = ?", (timezone, chat_id))
+    else:
+        cur.execute("INSERT INTO users VALUES (?, ?, ?)", (chat_id, username, timezone))
+    db.commit()
+    await callback_query.answer(':з')
+    await timezone_confirmation(callback_query.message, timezone)
+
+# --- альтернативные зоны ---
+@dp.message(Command('alt_timezone'))
+async def choose_alt_timezone(message: types.Message):
+    utc_neg12 = InlineKeyboardButton(text='UTC -12:00', callback_data='UTC -12:00')
+    utc_neg11 = InlineKeyboardButton(text='UTC -11:00', callback_data='UTC -11:00')
+    utc_neg10 = InlineKeyboardButton(text='UTC -10:00', callback_data='UTC -10:00')
+    utc_neg930 = InlineKeyboardButton(text='UTC -09:30', callback_data='UTC -09:30')
+    utc_neg9 = InlineKeyboardButton(text='UTC -09:00', callback_data='UTC -09:00')
+    utc_neg8 = InlineKeyboardButton(text='UTC -08:00', callback_data='UTC -08:00')
+    utc_neg7 = InlineKeyboardButton(text='UTC -07:00', callback_data='UTC -07:00')
+    utc_neg6 = InlineKeyboardButton(text='UTC -06:00', callback_data='UTC -06:00')
+    utc_neg5 = InlineKeyboardButton(text='UTC -05:00', callback_data='UTC -05:00')
+    utc_neg4 = InlineKeyboardButton(text='UTC -04:00', callback_data='UTC -04:00')
+    utc_neg330 = InlineKeyboardButton(text='UTC -03:30', callback_data='UTC -03:30')
+    utc_neg3 = InlineKeyboardButton(text='UTC -03:00', callback_data='UTC -03:00')
+    utc_neg2 = InlineKeyboardButton(text='UTC -02:00', callback_data='UTC -02:00')
+    utc_neg1 = InlineKeyboardButton(text='UTC -01:00', callback_data='UTC -01:00')
+    utc_0 = InlineKeyboardButton(text='UTC +00:00', callback_data='UTC +00:00')
+    utc_1 = InlineKeyboardButton(text='UTC +01:00', callback_data='UTC +01:00')
+    utc_330 = InlineKeyboardButton(text='UTC +03:30', callback_data='UTC +03:30')
+    utc_430 = InlineKeyboardButton(text='UTC +04:30', callback_data='UTC +04:30')
+    utc_530 = InlineKeyboardButton(text='UTC +05:30', callback_data='UTC +05:30')
+    utc_545 = InlineKeyboardButton(text='UTC +05:45', callback_data='UTC +05:45')
+    utc_630 = InlineKeyboardButton(text='UTC +06:30', callback_data='UTC +06:30')
+    utc_845 = InlineKeyboardButton(text='UTC +08:45', callback_data='UTC +08:45')
+    utc_930 = InlineKeyboardButton(text='UTC +09:30', callback_data='UTC +09:30')
+    utc_1030 = InlineKeyboardButton(text='UTC +10:30', callback_data='UTC +10:30')
+    utc_1245 = InlineKeyboardButton(text='UTC +12:45', callback_data='UTC +12:45')
+    utc_13 = InlineKeyboardButton(text='UTC +13:00', callback_data='UTC +13:00')
+    utc_14 = InlineKeyboardButton(text='UTC +14:00', callback_data='UTC +14:00')
+
+    lines = [
+        [utc_neg12, utc_neg11, utc_neg10],
+        [utc_neg930, utc_neg9, utc_neg8],
+        [utc_neg7, utc_neg6, utc_neg5],
+        [utc_neg4, utc_neg330, utc_neg3],
+        [utc_neg2, utc_neg1, utc_0],
+        [utc_1, utc_330, utc_430],
+        [utc_530, utc_545, utc_630],
+        [utc_845, utc_930, utc_1030],
+        [utc_1245, utc_13, utc_14]
+    ]
+    alt_keyboard = types.InlineKeyboardMarkup(inline_keyboard=lines)
+    await message.answer(text='ого! а ты совсем далеко! вот другие часовые пояса, выбирай свой:',
+                         reply_markup=alt_keyboard)
+
+async def alt_timezone_confirmation(message: types.Message, alt_timezone: str):
+    await message.answer(f'часовой пояс {alt_timezone} установлен!\n\n'
+                         )
+
+@dp.callback_query()
+async def handle_alt_timezone(callback_query: types.callback_query):
+    chat_id = callback_query.from_user.id
+    username = callback_query.from_user.username
+    alt_timezone = callback_query.data
+
+    cur.execute("SELECT 1 FROM users WHERE id = ?", (chat_id,))
+    if cur.fetchone():
+        cur.execute("UPDATE users SET timezone = ? WHERE id = ?", (alt_timezone, chat_id))
+    else:
+        cur.execute("INSERT INTO users VALUES (?, ?, ?)", (chat_id, username, alt_timezone))
+    db.commit()
+    await callback_query.answer(':з')
+    await alt_timezone_confirmation(callback_query.message, alt_timezone)
+
+
+# --- берем картиночки ---
 def get_image():
     images = [x for x in os.listdir(r'fioklik_images')]
     return os.path.join(r'fioklik_images', random.choice(images))
