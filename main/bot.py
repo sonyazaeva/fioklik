@@ -600,10 +600,10 @@ async def cmd_shop(message: types.Message, state: FSMContext) -> None:
                               'нажми на ту, которую хочешь купить!', reply_markup=menu_keyboard)
     await state.set_state(Form.handle_function)
 
-
 @dp.callback_query(Form.handle_function)
 async def handle_function(callback_query: types.callback_query, state: FSMContext):
     function = callback_query.data
+    await callback_query.answer(':з')
     await state.set_state(Form.handle_answer)
     await function_confirmation(callback_query.message, function)
 
@@ -635,11 +635,13 @@ async def function_confirmation(message: types.Message, function):
 
 @dp.callback_query(Form.handle_answer)
 async def handle_answer(callback_query: types.callback_query, state: FSMContext):
+    await callback_query.answer(':з')
     answer = callback_query.data
     await purchase_approvement_confirmation(callback_query.message, answer)
     await state.clear()
 
 async def purchase_approvement_confirmation(message: types.Message, answer):
+
     if answer == 'отмена':
         await message.answer(text=f'покупка отменена :)')
         chat_id = message.chat.id
