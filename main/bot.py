@@ -578,7 +578,10 @@ async def cmd_shop(message: types.Message, state: FSMContext) -> None:
     chat_id = message.chat.id
     cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
     functions_code = cur.fetchone()[0]
-
+    functions_code = functions_code.replace('1','0')
+    cur.execute("UPDATE users SET functions = ? WHERE id = ?", (functions_code, chat_id))
+    db.commit()
+    
     status_dict = {
         'meme': {'text': 'мемы', 'price': 10, 'index': 0},
         'anec': {'text': 'анекдоты', 'price': 14, 'index': 1},
@@ -647,21 +650,9 @@ async def purchase_approvement_confirmation(message: types.Message, answer):
         chat_id = message.chat.id
         cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
         functions_code = cur.fetchone()[0]
-
-        status_dict = ({
-            'meme': f'{functions_code[0]}',
-            'anec': f'{functions_code[1]}',
-            'quote': f'{functions_code[2]}',
-            'test': f'{functions_code[3]}',
-            'music': f'{functions_code[4]}',
-        })
-
-        for key, value in status_dict.items():
-            if status_dict[key] == '1':
-                status_dict[key] = '0'
-                new_code = f'{status_dict['meme']}{status_dict['anec']}{status_dict['quote']}{status_dict['test']}{status_dict['music']}'
-                cur.execute("UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id))
-                db.commit()
+        functions_code = functions_code.replace('1', '0')
+        cur.execute("UPDATE users SET functions = ? WHERE id = ?", (functions_code, chat_id))
+        db.commit()
 
     elif answer == 'ок':
         chat_id = message.chat.id
