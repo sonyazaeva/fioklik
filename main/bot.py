@@ -229,16 +229,35 @@ async def cmd_account(message: types.Message) -> None:
     cur.execute(f"SELECT time_mins FROM users WHERE id = ?", (chat_id,))
     time_m = cur.fetchone()
     m = "%s" % str(time_m[0]) if time_m[0] >= 10 else "0%s" % str(time_m[0])
+    func = await cmd_availible_func(message)
     if acc:
         await message.answer(
             f"твой юзернейм: <b>{acc[0]}</b>\n"
             f"твой баланс: <b>{points[0]}</b>\n"
             f"твой страйк: <b>{strike[0]}</b>\n"
             f"выбранное время: <b>{h}:{m}</b>\n"
-            f"часовой пояс: <b>{tmz[0]}</b>\n\n"
+            f"часовой пояс: <b>{tmz[0]}</b>\n"
+            f"доступные функции: {func}\n\n"
             f"если ты хочешь что-то изменить, нажми /edit_account",
             parse_mode="HTML",
         )
+
+
+# --- доступные функции ---
+async def cmd_availible_func(message: types.Message):
+    chat_id = message.chat.id
+    cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
+    functions_code = cur.fetchone()[0]
+    availible = []
+    for key, value in status_dict.items():
+        if functions_code[value['index']] == '2':
+            func = InlineKeyboardButton(text=f"{value['text']}")
+            availible.append([func])
+    str_av = ', '.join(availible)
+    if len(str_av) == 0:
+        return 'функций пока нет :('
+    else:
+        return str_av
 
 
 # --- хэндлер на команду /edit_account ---
