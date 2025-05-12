@@ -69,7 +69,7 @@ class Form(StatesGroup):
 
 
 # --- словарь с функциями из магазина, их ценой и индексом в "шифре" ---
-status_dict = {
+function_dict = {
     'meme': {'text': 'мемы', 'price': 10, 'index': 0},
     'anec': {'text': 'анекдоты', 'price': 14, 'index': 1},
     'quote': {'text': 'цитаты', 'price': 20, 'index': 2},
@@ -203,7 +203,7 @@ async def cmd_processtime(message: types.Message, state: FSMContext) -> None:
 
     await message.answer(
         f'отлично, теперь каждый день в <b>{message.text}</b> я буду присылать тебе идею для заметки о прошедшем дне) '
-        f'не забывай отвечать мне, чтобы зарабатывать очки для открытия новых функций!\n\n'
+        f'не забывай отвечать мне, чтобы зарабатывать баллы для открытия новых функций!\n\n'
         f'рад, что мы познакомились! вот, что я теперь о тебе знаю:', parse_mode='HTML')
     await cmd_account(message)
     await cmd_commands(message)
@@ -249,7 +249,7 @@ async def cmd_availible_func(message: types.Message):
     cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
     functions_code = cur.fetchone()[0]
     availible = []
-    for key, value in status_dict.items():
+    for key, value in function_dict.items():
         if functions_code[value['index']] == '2':
             func = f"{value['text']}"
             availible.append(func)
@@ -333,12 +333,12 @@ async def save_prompt(message: types.Message, state: FSMContext):
     db.execute(f'UPDATE users SET save_status = ? WHERE id = ?', ('waiting', chat_id))
     cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
     points = cur.fetchone()
-    if points[0] > 6:
+    cur.execute(f"SELECT strike FROM users WHERE id = ?", (chat_id,))
+    strike = cur.fetchone()
+    if strike[0] > 6:
         db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 3, chat_id))
     else:
         db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 2, chat_id))
-    cur.execute(f"SELECT strike FROM users WHERE id = ?", (chat_id,))
-    strike = cur.fetchone()
     db.execute(f'UPDATE users SET strike = ? WHERE id = ?', (strike[0] + 1, chat_id))
     db.commit()
 
@@ -577,7 +577,7 @@ async def cmd_commands(message: types.Message):
         "давай расскажу о том, что я умею!\n\n"
         "<b>/account</b> — проверить свои имя, баланс и доступные функции или отредактировать аккаунт\n"
         "<b>/shop</b> — открыть магазин и купить какую-нибудь функцию (мне уже не терпится отправить тебе мем!) \n"
-        "<b>/info</b> — узнать о том, как все устроено и как зарабатывать очки", parse_mode='HTML'
+        "<b>/info</b> — узнать о том, как все устроено и как зарабатывать баллы", parse_mode='HTML'
     )
 
 
@@ -612,7 +612,7 @@ async def cmd_shop(message: types.Message, state: FSMContext) -> None:
     db.commit()
 
     menu = []
-    for key, value in status_dict.items():
+    for key, value in function_dict.items():
         if functions_code[value['index']] == '0':
             button = InlineKeyboardButton(text=f"{value['text']} - {value['price']}",
                                           callback_data=value['text'])
@@ -678,7 +678,7 @@ async def purchase_approvement_confirmation(message: types.Message, answer):
         points = cur.fetchone()[0]
         index = functions_code.find('1')
 
-        for key, value in status_dict.items():
+        for key, value in function_dict.items():
             if value['index'] == index:
                 if points >= value['price']:
                     cur.execute("UPDATE users SET points = ? WHERE id = ?", (points - value['price'], chat_id))
@@ -698,9 +698,9 @@ def get_image():
     return os.path.join(r'fioklik_images', random.choice(images))
 
 
-# --- хэндлер на /fun ---
-@dp.message(Command("fun"))
-async def cmd_fun(message: types.Message):
+# --- хэндлер на /meme ---
+@dp.message(Command("meme"))
+async def cmd_meme(message: types.Message):
     image_path = get_image()
     if image_path:
         photo = FSInputFile(image_path)
@@ -712,6 +712,7 @@ async def cmd_fun(message: types.Message):
 async def cmd_givemeatank(message: types.Message):
     chat_id = message.chat.id
     cur.execute("UPDATE users SET points = ? WHERE id = ?", (100, chat_id))
+    cur.execute("UPDATE users SET strike = ? WHERE id = ?", (7, chat_id))
     db.commit
 
 # --- обработка неизвестных сообщений ---
