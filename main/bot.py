@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 # --- привязываем код к тг ---
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
-TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
+TOKEN = "7844979667:AAEgyWBqPbAk6dyRZC0l5uV1lmMcM1_AZUw"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
@@ -251,8 +251,8 @@ async def cmd_availible_func(message: types.Message):
     availible = []
     for key, value in status_dict.items():
         if functions_code[value['index']] == '2':
-            func = InlineKeyboardButton(text=f"{value['text']}")
-            availible.append([func])
+            func = f"{value['text']}"
+            availible.append(func)
     str_av = ', '.join(availible)
     if len(str_av) == 0:
         return 'функций пока нет :('
@@ -683,6 +683,7 @@ async def purchase_approvement_confirmation(message: types.Message, answer):
                 if points >= value['price']:
                     cur.execute("UPDATE users SET points = ? WHERE id = ?", (points - value['price'], chat_id))
                     functions_code = functions_code.replace('1', '2')
+                    cur.execute("UPDATE users SET functions = ? WHERE id = ?", (functions_code, chat_id))
                     await message.answer(text=f'теперь тебе доступна функция <b>{value['text']}</b>. ты можешь воспользоваться ей один раз в день, '
                                               f'нажав на команду <b>/{key}</b>', parse_mode="HTML")
                 elif points < value['price']:
@@ -705,6 +706,13 @@ async def cmd_fun(message: types.Message):
         photo = FSInputFile(image_path)
         await message.answer_photo(photo, caption='картиночка для тебя :з')
 
+
+# --- хэндлер на /givemeatank ---
+@dp.message(Command("givemeatank"))
+async def cmd_givemeatank(message: types.Message):
+    chat_id = message.chat.id
+    cur.execute("UPDATE users SET points = ? WHERE id = ?", (100, chat_id))
+    db.commit
 
 # --- обработка неизвестных сообщений ---
 @dp.message(F.text)
