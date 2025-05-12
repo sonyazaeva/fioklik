@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 # --- привязываем код к тг ---
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
-TOKEN = "7844979667:AAEgyWBqPbAk6dyRZC0l5uV1lmMcM1_AZUw"
+TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
