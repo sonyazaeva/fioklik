@@ -614,7 +614,24 @@ async def function_confirmation(message: types.Message, function):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=row)
     await message.answer(text=f'ты выбрал {function}. подтверди покупку, нажав ок',
                          reply_markup=keyboard)
+    chat_id = message.chat.id
+    cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
+    functions_code = cur.fetchone()[0]
 
+    status_dict = ({
+        'мемы': f'{functions_code[0]}',
+        'анекдоты': f'{functions_code[1]}',
+        'цитаты': f'{functions_code[2]}',
+        'тестики': f'{functions_code[3]}',
+        'музыка': f'{functions_code[4]}',
+    })
+
+    status_dict[f'{function}'] = '1'
+    print(status_dict)
+    new_code = f'{status_dict['мемы']}{status_dict['анекдоты']}{status_dict['цитаты']}{status_dict['тестики']}{status_dict['музыка']}'
+    print(new_code)
+    cur.execute("UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id))
+    db.commit()
 
 @dp.callback_query(Form.handle_answer)
 async def handle_answer(callback_query: types.callback_query, state: FSMContext):
@@ -624,10 +641,47 @@ async def handle_answer(callback_query: types.callback_query, state: FSMContext)
 
 async def purchase_approvement_confirmation(message: types.Message, answer):
     if answer == 'отмена':
-        await message.answer(text=f'отмена')
-    elif answer == 'ок':
-        await cmd_buy_a_func(message)
+        await message.answer(text=f'покупка отменена :)')
+        chat_id = message.chat.id
+        cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
+        functions_code = cur.fetchone()[0]
 
+        status_dict = ({
+            'meme': f'{functions_code[0]}',
+            'anec': f'{functions_code[1]}',
+            'quote': f'{functions_code[2]}',
+            'test': f'{functions_code[3]}',
+            'music': f'{functions_code[4]}',
+        })
+
+        for key, value in status_dict.items():
+            if status_dict[key] == '1':
+                status_dict[key] = '0'
+                new_code = f'{status_dict['meme']}{status_dict['anec']}{status_dict['quote']}{status_dict['test']}{status_dict['music']}'
+                cur.execute("UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id))
+                db.commit()
+
+    elif answer == 'ок':
+        chat_id = message.chat.id
+        await cmd_buy_a_func(chat_id)
+
+
+# --- покупка функции ---
+async def cmd_buy_a_func(chat_id):
+    cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
+    functions_code = cur.fetchone()[0]
+
+    status_dict = ({
+        'meme': f'{functions_code[0]}',
+        'anec': f'{functions_code[1]}',
+        'quote': f'{functions_code[2]}',
+        'test': f'{functions_code[3]}',
+        'music': f'{functions_code[4]}',
+    })
+
+    for key, value in status_dict.items():
+        if functions_code[key] == '1':
+            function = functions_code[key]
 
 # --- берем картиночки ---
 def get_image():
