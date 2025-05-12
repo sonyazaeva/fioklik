@@ -68,6 +68,16 @@ class Form(StatesGroup):
     handle_answer = State()
 
 
+# --- словарь с функциями из магазина, их ценой и индексом в "шифре" ---
+status_dict = {
+    'meme': {'text': 'мемы', 'price': 10, 'index': 0},
+    'anec': {'text': 'анекдоты', 'price': 14, 'index': 1},
+    'quote': {'text': 'цитаты', 'price': 20, 'index': 2},
+    'test': {'text': 'тестики', 'price': 28, 'index': 3},
+    'music': {'text': 'музыка', 'price': 38, 'index': 4},
+}
+
+
 # --- хэндлер на /cancel ---
 @dp.message(Command("cancel"))
 async def cmd_cancel(message: types.Message, state: FSMContext):
@@ -581,17 +591,8 @@ async def cmd_shop(message: types.Message, state: FSMContext) -> None:
     functions_code = functions_code.replace('1','0')
     cur.execute("UPDATE users SET functions = ? WHERE id = ?", (functions_code, chat_id))
     db.commit()
-    
-    status_dict = {
-        'meme': {'text': 'мемы', 'price': 10, 'index': 0},
-        'anec': {'text': 'анекдоты', 'price': 14, 'index': 1},
-        'quote': {'text': 'цитаты', 'price': 20, 'index': 2},
-        'test': {'text': 'тестики', 'price': 28, 'index': 3},
-        'music': {'text': 'музыка', 'price': 38, 'index': 4},
-    }
 
     menu = []
-
     for key, value in status_dict.items():
         if functions_code[value['index']] == '0':
             button = InlineKeyboardButton(text=f"{value['text']} - {value['price']}",
@@ -644,37 +645,32 @@ async def handle_answer(callback_query: types.callback_query, state: FSMContext)
     await state.clear()
 
 async def purchase_approvement_confirmation(message: types.Message, answer):
-
-    if answer == 'отмена':
-        await message.answer(text=f'покупка отменена :)')
-        chat_id = message.chat.id
-        cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
-        functions_code = cur.fetchone()[0]
-        functions_code = functions_code.replace('1', '0')
-        cur.execute("UPDATE users SET functions = ? WHERE id = ?", (functions_code, chat_id))
-        db.commit()
-
-    elif answer == 'ок':
-        chat_id = message.chat.id
-        await cmd_buy_a_func(chat_id)
-
-
-# --- покупка функции ---
-async def cmd_buy_a_func(chat_id):
+    chat_id = message.chat.id
     cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
     functions_code = cur.fetchone()[0]
 
-    status_dict = ({
-        'meme': f'{functions_code[0]}',
-        'anec': f'{functions_code[1]}',
-        'quote': f'{functions_code[2]}',
-        'test': f'{functions_code[3]}',
-        'music': f'{functions_code[4]}',
-    })
+    if answer == 'отмена':
+        functions_code = functions_code.replace('1', '0')
+        cur.execute("UPDATE users SET functions = ? WHERE id = ?", (functions_code, chat_id))
+        await message.answer(text=f'покупка отменена :)')
 
-    for key, value in status_dict.items():
-        if functions_code[key] == '1':
-            function = functions_code[key]
+    elif answer == 'ок':
+        cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
+        points = cur.fetchone()[0]
+        index = functions_code.find('1')
+
+        for key, value in status_dict.items():
+            if value['index'] == index:
+                if points >= value['price']:
+                    cur.execute("UPDATE users SET points = ? WHERE id = ?", (points - value['price'], chat_id))
+                    functions_code = functions_code.replace('1', '2')
+                    await message.answer(text=f'теперь тебе доступна функция <b>{value['text']}</b>. ты можешь воспользоваться ей один раз в день, '
+                                              f'нажав на команду <b>/{key}</b>', parse_mode="HTML")
+                elif points < value['price']:
+                    functions_code = functions_code.replace('1', '0')
+                    await message.answer(text=f'к сожалению, тебе пока не хватает баллов, чтобы купить эту функцию :(', parse_mode="HTML")
+    db.commit()
+
 
 # --- берем картиночки ---
 def get_image():
