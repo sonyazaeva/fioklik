@@ -60,11 +60,8 @@ class Form(StatesGroup):
 
     # --- состояния, которые используются для других команд ---
     save = State()
-    save_added = State()
     change_name = State()
-    change_name_added = State()
     change_time = State()
-    change_time_added = State()
     timezone_changing = State()
     alt_timezone = State()
     handle_function = State()
@@ -148,7 +145,6 @@ async def handle_timezone(callback_query: types.callback_query, state: FSMContex
     else:
         timezone = callback
     cur.execute("UPDATE users SET timezone = ? WHERE id = ?", (timezone, chat_id))
-    await callback_query.answer(':з')
     await timezone_confirmation(callback_query.message, callback)
     await state.set_state(Form.timezone_set)
 
@@ -320,7 +316,6 @@ async def save_prompt(message: types.Message, state: FSMContext):
     await message.answer("отлично! твоя заметка сохранена! "
                          'приходи завтра, чтобы снова оставить заметку :)\n\n'
                          'а чтобы проверить баланс, нажми /account')
-    await state.set_state(Form.save_added)
 
 
 # --- отправка предупреждения об истечении времени ---
@@ -375,7 +370,7 @@ async def cmd_processchangedname(message: types.Message, state: FSMContext):
     db.execute(f'UPDATE users SET name = ? WHERE id = ?', (username, chat_id))
     db.commit()
     await message.answer(f"ура! твоё новое имя: <b>{username}</b>", parse_mode='HTML')
-    await state.set_state(Form.change_name_added)
+    await state.clear()
 
 
 # --- хэндлер на команду /change_time ---
@@ -422,7 +417,7 @@ async def cmd_processchangedtime(message: types.Message, state: FSMContext):
 
     await message.answer(f"ура! в следующий раз я пришлю тебе идею для заметки уже в <b>{message.text}</b>)",
                          parse_mode='HTML')
-    await state.set_state(Form.change_time_added)
+    await state.clear()
 
 
 # --- хэндлер на команду change_timezone ---
@@ -478,7 +473,6 @@ async def handle_timezone(callback_query: types.callback_query):
     else:
         cur.execute("INSERT INTO users VALUES (?, ?, ?)", (chat_id, username, timezone))
     db.commit()
-    await callback_query.answer(':з')
     await change_timezone_confirmation(callback_query.message, timezone)
 
 
@@ -544,7 +538,6 @@ async def handle_alt_timezone(callback_query: types.callback_query):
         scheduler.reschedule_job(job_id=str(chat_id), trigger="cron", hour=int(alt_timezone[5:7]) - hours - 3,
                                  minute=mins)
 
-    await callback_query.answer(':з')
     await alt_timezone_confirmation(callback_query.message, alt_timezone)
 
 
@@ -608,21 +601,32 @@ async def cmd_shop(message: types.Message, state: FSMContext) -> None:
     await state.set_state(Form.handle_function)
 
 
-async def function_confirmation(message: types.Message, state: FSMContext, function):
+@dp.callback_query(Form.handle_function)
+async def handle_function(callback_query: types.callback_query, state: FSMContext):
+    function = callback_query.data
+    await state.set_state(Form.handle_answer)
+    await function_confirmation(callback_query.message, function)
+
+async def function_confirmation(message: types.Message, function):
     ok = InlineKeyboardButton(text='ок', callback_data='ок')
     cancel = InlineKeyboardButton(text='отмена', callback_data='отмена')
     row = [[ok, cancel]]
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=row)
     await message.answer(text=f'ты выбрал {function}. подтверди покупку, нажав ок',
                          reply_markup=keyboard)
-    await state.set_state(Form.handle_answer)
 
 
-@dp.callback_query(Form.handle_function)
-async def handle_function(callback_query: types.callback_query):
-    function = callback_query.data
-    await callback_query.answer(':з')
-    await function_confirmation(callback_query.message, function)
+@dp.callback_query(Form.handle_answer)
+async def handle_answer(callback_query: types.callback_query, state: FSMContext):
+    answer = callback_query.data
+    await purchase_approvement_confirmation(callback_query.message, answer)
+    await state.clear()
+
+async def purchase_approvement_confirmation(message: types.Message, answer):
+    if answer == 'отмена':
+        await message.answer(text=f'отмена')
+    elif answer == 'ок':
+        await cmd_buy_a_func(message)
 
 
 # --- берем картиночки ---
