@@ -361,45 +361,58 @@ async def cmd_save(message: types.Message, state: FSMContext):
 @dp.message(Form.save)
 async def save_prompt(message: types.Message, state: FSMContext):
     await state.update_data(save=message.text)
-    f = open("notes.txt", encoding="utf-8")
+    f = open('notes.txt', encoding='utf-8')
     note = f.readlines()
     current_prompt = note[listik[0]]
     chat_id = message.chat.id
     user_response = message.text
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    current_time = datetime.now().strftime("%d-%m")
 
-    cucur.execute(
-        """
+    await message.answer("отлично! твоя заметка сохранена! "
+                         'приходи завтра, чтобы снова оставить заметку :)\n\n'
+                         'а чтобы проверить баланс, нажми /account')
+
+    # --- вспоминаем был ли вопрос раньше ---
+    cucur.execute(f"SELECT response, date FROM saved_prompts WHERE id = ? AND prompt = ?", (chat_id, current_prompt,))
+    repeat_response = cucur.fetchone()
+    d, m = repeat_response[1].split('-')
+    months = {'01': 'января',
+               '02': 'февраля',
+               '03': 'марта',
+               '04': 'апреля',
+               '05': 'мая',
+               '06': 'июня',
+               '07': 'июля',
+               '08': 'августа',
+               '09': 'сентября',
+               '10': 'октября',
+               '11': 'ноября',
+               '12': 'декабря'}
+    if repeat_response:
+        await message.answer(f"кстати, этот вопрос уже попадался раньше, помнишь? "
+                             f"вот, какой был ответ у тебя был {d} {months[m]}:\n\n"
+                             f"<b>{repeat_response[0]}</b>", parse_mode='HTML')
+
+    # --- сохраняем новый ответ ---
+    cucur.execute('''
                 INSERT OR REPLACE INTO saved_prompts 
                 (id, prompt, response, date)
                 VALUES (?, ?, ?, ?)
-            """,
-        (chat_id, current_prompt, user_response, current_time),
-    )
+            ''', (chat_id, current_prompt, user_response, current_time))
     prdb.commit()
     await state.clear()
 
-    db.execute(f"UPDATE users SET save_status = ? WHERE id = ?", ("waiting", chat_id))
+    db.execute(f'UPDATE users SET save_status = ? WHERE id = ?', ('waiting', chat_id))
     cur.execute(f"SELECT points FROM users WHERE id = ?", (chat_id,))
     points = cur.fetchone()
     cur.execute(f"SELECT strike FROM users WHERE id = ?", (chat_id,))
     strike = cur.fetchone()
     if strike[0] > 6:
-        db.execute(
-            f"UPDATE users SET points = ? WHERE id = ?", (points[0] + 3, chat_id)
-        )
+        db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 3, chat_id))
     else:
-        db.execute(
-            f"UPDATE users SET points = ? WHERE id = ?", (points[0] + 2, chat_id)
-        )
-    db.execute(f"UPDATE users SET strike = ? WHERE id = ?", (strike[0] + 1, chat_id))
+        db.execute(f'UPDATE users SET points = ? WHERE id = ?', (points[0] + 2, chat_id))
+    db.execute(f'UPDATE users SET strike = ? WHERE id = ?', (strike[0] + 1, chat_id))
     db.commit()
-
-    await message.answer(
-        "отлично! твоя заметка сохранена! "
-        "приходи завтра, чтобы снова оставить заметку :)\n\n"
-        "а чтобы проверить баланс, нажми /account"
-    )
 
 
 # --- отправка предупреждения об истечении времени ---
