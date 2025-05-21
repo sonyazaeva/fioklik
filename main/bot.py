@@ -12,10 +12,11 @@ from aiogram.types import FSInputFile
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram.types import InlineKeyboardButton
 from datetime import datetime, timedelta
+import csv
 
 # --- привязываем код к тг ---
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
-TOKEN = "7844979667:AAEgyWBqPbAk6dyRZC0l5uV1lmMcM1_AZUw"
+TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
@@ -840,6 +841,127 @@ async def cmd_meme(message: types.Message):
         if image_path:
             photo = FSInputFile(image_path)
             await message.answer_photo(photo, caption="картиночка для тебя :з")
+            new_code = f'3{functions_code[1:]}'
+            cur.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id, ))
+            db.commit()
+    elif functions_code[function_dict["meme"]["index"]] == "3":
+        await message.answer(
+            text="ты уже получал мем сегодня :)"
+        )
+    else:
+        await message.answer(
+            text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop"
+        )
+
+
+# --- хэндлер на /anec ---
+@dp.message(Command("anec"))
+async def cmd_anec(message: types.Message):
+    chat_id = message.chat.id
+    cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
+    functions_code = cur.fetchone()[0]
+    if functions_code[function_dict['anec']['index']] == '2':
+        f = open('anecdotes.txt', encoding='utf-8')
+        anecs = f.readlines()
+        anec = anecs[random.randrange(45)]
+        await bot.send_message(chat_id, text=f"держи анекдот дня:\n\n<b>{anec}</b>", parse_mode="HTML",)
+        new_code = f'{functions_code[0]}3{functions_code[2:]}'
+        cur.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id,))
+        db.commit()
+    elif functions_code[function_dict["anec"]["index"]] == "3":
+        await message.answer(text="ты уже получал анекдот сегодня :)")
+    else:
+        await message.answer(text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop")
+
+
+# --- хэндлер на /quote ---
+@dp.message(Command("quote"))
+async def cmd_quote(message: types.Message):
+    chat_id = message.chat.id
+    cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
+    functions_code = cur.fetchone()[0]
+    if functions_code[function_dict["quote"]["index"]] == "2":
+        f = open("wolf.txt", encoding="utf-8")
+        number = random.randrange(50)
+        quotes = f.readlines()
+        await bot.send_message(
+            chat_id,
+            text=f"цитата дня для тебя:\n\n<b>{quotes[number]}</b>\n"
+                 f"и помни: вместе мы стая.",
+            parse_mode="HTML",
+        )
+        new_code = f'{functions_code[:2]}3{functions_code[3:]}'
+        cur.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id,))
+        db.commit()
+    elif functions_code[function_dict["quote"]["index"]] == "3":
+        await message.answer(
+            text="ты уже получал цитату сегодня :)"
+        )
+    else:
+        await message.answer(
+            text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop"
+        )
+
+
+def get_test():
+    tests = []
+    with open ('tests.tsv', 'r', encoding='UTF-8') as tests_data:
+        data = csv.reader(tests_data, delimiter='\t')
+        for line in data:
+            tests.append(line)
+    return random.choice(tests)
+
+@dp.message(Command("test"))
+async def cmd_test(message: types.Message):
+    chat_id = message.chat.id
+    cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
+    functions_code = cur.fetchone()[0]
+    if functions_code[function_dict["test"]["index"]] == "2":
+        test_path = get_test()
+        if test_path:
+            knopka = InlineKeyboardButton(text=f'{get_test()[0]}', url=f'{get_test()[1]}')
+            knopki = [[knopka]]
+            knopochka = types.InlineKeyboardMarkup(inline_keyboard=knopki)
+
+            await message.answer(
+                text='твой тестик на сегодня:',
+                reply_markup=knopochka
+            )
+
+            new_code = f'{functions_code[:3]}3{functions_code[4]}'
+            cur.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id, ))
+            db.commit()
+    elif functions_code[function_dict["test"]["index"]] == "3":
+        await message.answer(
+            text="ты уже проходил тестик сегодня:)"
+        )
+    else:
+        await message.answer(
+            text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop"
+        )
+
+
+def get_music():
+    music = [y for y in os.listdir('music')]
+    return os.path.join('music', random.choice(music))
+
+@dp.message(Command("music"))
+async def cmd_music(message: types.Message):
+    chat_id = message.chat.id
+    cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
+    functions_code = cur.fetchone()[0]
+    if functions_code[function_dict["music"]["index"]] == "2":
+        music_path = get_music()
+        if music_path:
+            audio = FSInputFile(music_path)
+            await message.answer_audio(audio, caption="музыка для тебя :з")
+            new_code = f'{functions_code[:4]}3'
+            cur.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id,))
+            db.commit()
+    elif functions_code[function_dict["music"]["index"]] == "3":
+        await message.answer(
+            text="ты уже получал музыку от меня сегодня :)"
+        )
     else:
         await message.answer(
             text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop"
