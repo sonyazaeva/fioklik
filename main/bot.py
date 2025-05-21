@@ -16,7 +16,7 @@ import csv
 
 # --- привязываем код к тг ---
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
-TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
+TOKEN = "7844979667:AAEgyWBqPbAk6dyRZC0l5uV1lmMcM1_AZUw"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
@@ -215,13 +215,24 @@ async def cmd_processtime(message: types.Message, state: FSMContext) -> None:
 
     cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
     timezone = cur.fetchone()[0]
+    send_time = await timezone_converter(int(timezone[5:7]), hours)
     scheduler.add_job(
         send_prompt,
         trigger="cron",
-        hour=int(timezone[5:7]) + hours - 3,
+        hour=send_time,
         minute=mins,
         id=str(chat_id),
         kwargs={"bot": bot, "chat_id": chat_id},
+    )
+
+    set_at_midnight = await timezone_converter(int(timezone[5:7]), 0)
+    scheduler.add_job(
+        newday,
+        trigger="cron",
+        hour=set_at_midnight,
+        minute=00,
+        id='night' + str(chat_id),
+        kwargs={"chat_id": chat_id},
     )
 
     await message.answer(
@@ -662,6 +673,7 @@ async def cmd_processchangedtime(message: types.Message, state: FSMContext):
 
     cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
     timezone = cur.fetchone()[0]
+    send_time = await timezone_converter(int(timezone[5:7]), hours)
     scheduler.reschedule_job(
         job_id=str(chat_id),
         trigger="cron",
@@ -1040,6 +1052,24 @@ async def cmd_dontknow(message: types.Message):
     await message.answer(
         "кажется, я тебя не понимаю( попробуй выбрать одну из доступных команд, нажав /commands"
     )
+
+async def timezone_converter(timezone, hours):
+    if timezone < 3:
+        send_time = (hours + (3 - timezone)) % 24
+    else:
+        x = (hours - (timezone - 3)) % 24
+        if x < 0:
+            send_time = 24 + x
+        else:
+            send_time = x
+    return send_time
+
+async def newday(chat_id: int):
+    cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
+    functions_code = cur.fetchone()
+    new_code = functions_code[0].replace('3', '2')
+    cur.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id,))
+    db.commit()
 
 
 # --- запуск поллинга и расписания---
