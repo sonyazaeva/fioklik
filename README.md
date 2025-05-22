@@ -38,4 +38,4 @@ BOT_TOKEN='токен_бота'
 - [обзор и туториал на aiogram](https://www.youtube.com/watch?v=pd-0G0MigUA) (пояснения к докуменатции)
 - [гайд по работе с базами данных на sqlite3](https://habr.com/ru/amp/publications/754400/) (для создания баз:))
 -  [туториалы с канала Сурена Хореняна](https://youtube.com/@surenkhorenyan?si=vQQSQpagEgfpKUAH) (для доработки бота и дополнительной информации о написании бота на aiogram)
--  
+-  [документация scheduler'а](https://apscheduler.readthedocs.io/en/stable/modules/schedulers/base.html#apscheduler.schedulers.base.BaseScheduler.scheduled_job)
