@@ -113,8 +113,6 @@ async def cmd_start(message: types.Message, state: FSMContext) -> None:
             "каждый день в определенное время я буду присылать тебе идеи для заметок. "
             "за каждую заметку ты будешь получать баллы, с помощью которых сможешь открыть новые функции. "
             "например, я буду делиться с тобой мемами, анекдотами и многим-многим другим, что сделает твой день веселее и интереснее.\n\n"
-            "я бы хотел, чтобы наше общение было более постоянным, поэтому если ты будешь забывать писать заметки, то будешь терять баллы :(\n\n"
-            "поэтому, пожалуйста, не забывай открывать чатик и писать что-то. не бойся, я напомню тебе о потере страйка!\n\n"
             "а сейчас давай познакомимся! скажи, как к тебе обращаться?"
         )
 
@@ -196,55 +194,54 @@ async def cmd_processtime(message: types.Message, state: FSMContext) -> None:
     # --- проверяем соответствие формата введенного времени ---
     try:
         hours, mins = map(int, message.text.split(":"))
+        chat_id = message.chat.id
+        await state.update_data(time_hours=hours, time_mins=mins)
+
+        if 0 <= hours < 24 and 0 <= mins < 60:
+            db.execute(f"UPDATE users SET time_hours = ? WHERE id = ?", (hours, chat_id))
+            db.execute(f"UPDATE users SET time_mins = ? WHERE id = ?", (mins, chat_id))
+            db.commit()
+        else:
+            await message.answer(
+                "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
+            )
+
+        cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
+        timezone = cur.fetchone()[0]
+        send_time = await timezone_converter(int(timezone[5:7]), hours)
+        scheduler.add_job(
+            send_prompt,
+            trigger="cron",
+            hour=send_time,
+            minute=mins,
+            id=str(chat_id),
+            kwargs={"bot": bot, "chat_id": chat_id},
+        )
+
+        set_at_midnight = await timezone_converter(int(timezone[5:7]), 0)
+        scheduler.add_job(
+            newday,
+            trigger="cron",
+            hour=set_at_midnight,
+            minute=00,
+            id='night' + str(chat_id),
+            kwargs={"chat_id": chat_id},
+        )
+
+        await message.answer(
+            f"отлично, теперь каждый день в <b>{message.text}</b> я буду присылать тебе идею для заметки о прошедшем дне) "
+            f"не забывай отвечать мне, чтобы зарабатывать баллы для открытия новых функций!\n\n"
+            f"рад, что мы познакомились! вот, что я теперь о тебе знаю:",
+            parse_mode="HTML",
+        )
+        await cmd_account(message)
+        await cmd_commands(message)
+        await cmd_info(message)
+        await state.set_state(Form.time_set)
     except ValueError:
         await message.answer(
             "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
         )
-
-    chat_id = message.chat.id
-    await state.update_data(time_hours=hours, time_mins=mins)
-
-    if 0 <= hours < 24 and 0 <= mins < 60:
-        db.execute(f"UPDATE users SET time_hours = ? WHERE id = ?", (hours, chat_id))
-        db.execute(f"UPDATE users SET time_mins = ? WHERE id = ?", (mins, chat_id))
-        db.commit()
-    else:
-        await message.answer(
-            "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
-        )
-
-    cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
-    timezone = cur.fetchone()[0]
-    send_time = await timezone_converter(int(timezone[5:7]), hours)
-    scheduler.add_job(
-        send_prompt,
-        trigger="cron",
-        hour=send_time,
-        minute=mins,
-        id=str(chat_id),
-        kwargs={"bot": bot, "chat_id": chat_id},
-    )
-
-    set_at_midnight = await timezone_converter(int(timezone[5:7]), 0)
-    scheduler.add_job(
-        newday,
-        trigger="cron",
-        hour=set_at_midnight,
-        minute=00,
-        id='night' + str(chat_id),
-        kwargs={"chat_id": chat_id},
-    )
-
-    await message.answer(
-        f"отлично, теперь каждый день в <b>{message.text}</b> я буду присылать тебе идею для заметки о прошедшем дне) "
-        f"не забывай отвечать мне, чтобы зарабатывать баллы для открытия новых функций!\n\n"
-        f"рад, что мы познакомились! вот, что я теперь о тебе знаю:",
-        parse_mode="HTML",
-    )
-    await cmd_account(message)
-    await cmd_commands(message)
-    await cmd_info(message)
-    await state.set_state(Form.time_set)
 
 
 # --- хэндлер на команду /account ---
@@ -274,7 +271,7 @@ async def cmd_account(message: types.Message) -> None:
             f"выбранное время: <b>{h}:{m}</b>\n"
             f"часовой пояс: <b>{tmz[0]}</b>\n"
             f"доступные функции: {func}\n\n"
-            f"если ты хочешь что-то изменить, нажми /edit_account",
+            f"если ты хочешь изменить имя, время или часовой пояс, нажми /edit_account",
             parse_mode="HTML",
         )
 
@@ -327,7 +324,8 @@ async def send_prompt(bot: Bot, chat_id: int):
         await bot.send_message(
             chat_id,
             text=f"вот тебе идея для заметки:\n<b>{current_prompt}</b>\n\n"
-            f"чтобы сохранить свой ответ, воспользуйся командой /save",
+                 f"у тебя есть целый день, чтобы написать заметку и получить баллы! "
+                 f"когда захочешь это сделать, нажми /save, и напиши заметку отдельным сообщением.",
             parse_mode="HTML",
         )
         db.execute(
@@ -368,9 +366,18 @@ async def cmd_save(message: types.Message, state: FSMContext):
             "оставь заметку отдельным сообщением. ты можешь отправить только одно сообщение!",
             parse_mode="HTML",
         )
-    else:
+    elif save_status[0] == "waiting":
         await message.answer(
             "сегодня ты уже не можешь написать заметку :( приходи завтра!"
+        )
+    elif save_status[0] == "sending":
+        await message.answer(
+            "пожалуйста, дождись пока я отправлю тебе идею для заметки или измени время в аккаунте)"
+        )
+    elif save_status[0] == "pause":
+        await message.answer(
+            "пока у тебя остановлена функция отправки идеи, ты не можешь сохранять новые заметик :(\n\n"
+            "если ты хочешь её включить, нажми /resume"
         )
 
 
@@ -538,7 +545,7 @@ async def pause_approvement(message: types.Message, answer):
         db.execute(f"UPDATE users SET save_status = ? WHERE id = ?", ("pause", message.chat.id))
         db.commit()
         await message.answer("функция остановлена) "
-                             "когда снова захочешь получать от меня идеи для них, нажми /resume")
+                             "когда снова захочешь получать от меня идеи для заметок, нажми /resume")
 
 
 # --- хэндлер на команду /resume ---
@@ -657,35 +664,34 @@ async def cmd_processchangedtime(message: types.Message, state: FSMContext):
     try:
         hours, mins = map(int, message.text.split(":"))
         await state.update_data(time_hours=hours, time_mins=mins)
+        if 0 <= hours < 24 and 0 <= mins < 60:
+            db.execute(f"UPDATE users SET time_hours = ? WHERE id = ?", (hours, chat_id))
+            db.execute(f"UPDATE users SET time_mins = ? WHERE id = ?", (mins, chat_id))
+            db.commit()
+        else:
+            await message.answer(
+                "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
+            )
+
+        cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
+        timezone = cur.fetchone()[0]
+        send_time = await timezone_converter(int(timezone[5:7]), hours)
+        scheduler.reschedule_job(
+            job_id=str(chat_id),
+            trigger="cron",
+            hour=send_time,
+            minute=mins,
+        )
+
+        await message.answer(
+            f"ура! в следующий раз я пришлю тебе идею для заметки уже в <b>{message.text}</b>)",
+            parse_mode="HTML",
+        )
+        await state.clear()
     except ValueError:
         await message.answer(
             "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
         )
-
-    if 0 <= hours < 24 and 0 <= mins < 60:
-        db.execute(f"UPDATE users SET time_hours = ? WHERE id = ?", (hours, chat_id))
-        db.execute(f"UPDATE users SET time_mins = ? WHERE id = ?", (mins, chat_id))
-        db.commit()
-    else:
-        await message.answer(
-            "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
-        )
-
-    cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
-    timezone = cur.fetchone()[0]
-    send_time = await timezone_converter(int(timezone[5:7]), hours)
-    scheduler.reschedule_job(
-        job_id=str(chat_id),
-        trigger="cron",
-        hour=int(timezone[5:7]) + hours - 3,
-        minute=mins,
-    )
-
-    await message.answer(
-        f"ура! в следующий раз я пришлю тебе идею для заметки уже в <b>{message.text}</b>)",
-        parse_mode="HTML",
-    )
-    await state.clear()
 
 
 # --- хэндлер на команду change_timezone ---
@@ -727,11 +733,19 @@ async def change_timezone_confirmation(message: types.Message, timezone):
     hours = cur.fetchone()[0]
     cur.execute(f"SELECT time_mins FROM users WHERE id = ?", (chat_id,))
     mins = cur.fetchone()[0]
+    send_time = await timezone_converter(int(timezone[5:7]), hours)
     scheduler.reschedule_job(
         job_id=str(chat_id),
         trigger="cron",
-        hour=int(timezone[5:7]) + hours - 3,
+        hour=send_time,
         minute=mins,
+    )
+    set_at_midnight = await timezone_converter(int(timezone[5:7]), 0)
+    scheduler.reschedule_job(
+        job_id='night' + str(chat_id),
+        trigger="cron",
+        hour=set_at_midnight,
+        minute=0,
     )
 
 
@@ -756,8 +770,9 @@ async def cmd_commands(message: types.Message):
     await message.answer(
         "давай расскажу о том, что я умею!\n\n"
         "<b>/account</b> — проверить свои имя, баланс и доступные функции или отредактировать аккаунт\n"
-        "<b>/shop</b> — открыть магазин и купить какую-нибудь функцию (мне уже не терпится отправить тебе мем!) \n"
-        "<b>/info</b> — узнать о том, как все устроено и как зарабатывать баллы",
+        "<b>/shop</b> — открыть магазин и купить какую-нибудь функцию (мне уже не терпится отправить тебе мем!)\n"
+        "<b>/info</b> — узнать о том, как все устроено и как зарабатывать баллы\n"
+        "<b>/cancel</b> — отменить начатое действие",
         parse_mode="HTML",
     )
 
@@ -768,17 +783,16 @@ async def cmd_info(message: types.Message):
     await message.answer(
         "<b>как тут все устроено?</b>\n\n"
         "каждый день в то время, которые ты установил при регистрации, я буду присылать тебе идею для заметки. "
-        "чтобы оставить заметку, тебе нужно отправить команду /save. за неё ты будешь получать 2 балла.\n\n"
+        "чтобы оставить заметку, тебе нужно отправить команду /save. за каждую заметку ты будешь получать 2 балла.\n\n"
         "если каждый день в течение недели ты будешь оставлять заметки, то дальше каждая следующая будет приносить тебе целых 3 балла) "
-        "правда если ты пропустишь один день, то у тебя снимется 1 балл и страйк обнулится... "
-        "не бойся, я напомню тебе об этом за два часа до конца суток с момента отправки идеи :)\n\n"
-        "если ты поймешь, что время, в которое я присылаю тебе идею, не самое удобное, "
-        "то всегда сможешь изменить его в настройках аккаунта с помощью /change_time\n\n"
+        "правда, за каждый пропущенный день, у тебя будет сниматься 1 балл и обнуляться страйк... "
+        "не бойся, я напомню тебе о заметке за два часа до конца суток с момента отправки идеи :)\n\n"
         "<b>зачем нужны баллы?</b>\n\n"
         "я могу отправлять не только идеи для заметок, но и другие штуки) "
         "чтобы открыть новую функцию, копи баллы и покупай в магазине с помощью /shop. "
         "открыв новую функцию, ты сможешь вызывать её один раз в день "
-        "и получать какую-то прихолюху (мем, анекдот, тестик или волчью цитатку).\n\nвот так вот :)",
+        "и получать какую-то прихолюху (мем, анекдот, тестик или волчью цитатку).\n\n"
+        "есть ещё несколько особых команд, о которых я расскажу тебе позже! вот так вот :)",
         parse_mode="HTML",
     )
 
@@ -805,8 +819,8 @@ async def cmd_shop(message: types.Message, state: FSMContext) -> None:
 
     menu_keyboard = types.InlineKeyboardMarkup(inline_keyboard=menu)
     await message.answer(
-        text="рад видеть тебя в магазине функций! ниже - фукнции и их цена. "
-        "нажми на ту, которую хочешь купить!",
+        text="рад видеть тебя в магазине функций! ниже - функции и их цена. "
+             "нажми на ту, которую хочешь купить!",
         reply_markup=menu_keyboard,
     )
     await state.set_state(Form.handle_function)
