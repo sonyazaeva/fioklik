@@ -206,7 +206,9 @@ async def cmd_processtime(message: types.Message, state: FSMContext) -> None:
         db.execute(f"UPDATE users SET time_mins = ? WHERE id = ?", (mins, chat_id))
         db.commit()
     else:
-        await message.answer("пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера")
+        await message.answer(
+            "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
+        )
 
     cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
     timezone = cur.fetchone()[0]
@@ -226,7 +228,7 @@ async def cmd_processtime(message: types.Message, state: FSMContext) -> None:
         trigger="cron",
         hour=set_at_midnight,
         minute=00,
-        id='night' + str(chat_id),
+        id="night" + str(chat_id),
         kwargs={"chat_id": chat_id},
     )
 
@@ -323,8 +325,8 @@ async def send_prompt(bot: Bot, chat_id: int):
         await bot.send_message(
             chat_id,
             text=f"вот тебе идея для заметки:\n<b>{current_prompt}</b>\n\n"
-                 f"у тебя есть целый день, чтобы написать заметку и получить баллы! "
-                 f"когда захочешь это сделать, нажми /save, и напиши заметку отдельным сообщением.",
+            f"у тебя есть целый день, чтобы написать заметку и получить баллы! "
+            f"когда захочешь это сделать, нажми /save, и напиши заметку отдельным сообщением.",
             parse_mode="HTML",
         )
         db.execute(
@@ -335,14 +337,14 @@ async def send_prompt(bot: Bot, chat_id: int):
             send_alert,
             trigger="date",
             run_date=datetime.now() + timedelta(hours=22) - timedelta(seconds=5),
-            id='alert' + str(chat_id),
+            id="alert" + str(chat_id),
             kwargs={"bot": bot, "chat_id": chat_id},
         )
         scheduler.add_job(
             fine,
             trigger="date",
             run_date=datetime.now() + timedelta(days=1),
-            id='fine' + str(chat_id),
+            id="fine" + str(chat_id),
             kwargs={"bot": bot, "chat_id": chat_id},
         )
 
@@ -509,7 +511,8 @@ async def cmd_pause(message: types.Message, state: FSMContext) -> None:
         await state.set_state(Form.set_pause)
         await message.answer(
             text=f"когда функция отправки идей будет остановлена, я сниму с твоего баланса 3 балла и обнулю твой страйк, "
-                 f"чтобы всё было честно :) хорошо?", reply_markup=keyboard
+            f"чтобы всё было честно :) хорошо?",
+            reply_markup=keyboard,
         )
     else:
         await message.answer(
@@ -533,18 +536,24 @@ async def pause_approvement(message: types.Message, answer):
 
     elif answer == "ок":
         scheduler.pause_job(str(message.chat.id))
-        #x = scheduler.get_job('fine' + str(message.chat.id))
-        if scheduler.get_job('fine' + str(message.chat.id)) != None:
-            scheduler.remove_job('fine' + str(message.chat.id))
-            scheduler.remove_job('alert' + str(message.chat.id))
+        # x = scheduler.get_job('fine' + str(message.chat.id))
+        if scheduler.get_job("fine" + str(message.chat.id)) != None:
+            scheduler.remove_job("fine" + str(message.chat.id))
+            scheduler.remove_job("alert" + str(message.chat.id))
         cur.execute(f"SELECT points FROM users WHERE id = ?", (message.chat.id,))
         points = cur.fetchone()[0]
-        db.execute("UPDATE users SET points = ? WHERE id = ?",(points - 3, message.chat.id))
-        db.execute("UPDATE users SET strike = ? WHERE id = ?",(0, message.chat.id))
-        db.execute(f"UPDATE users SET save_status = ? WHERE id = ?", ("pause", message.chat.id))
+        db.execute(
+            "UPDATE users SET points = ? WHERE id = ?", (points - 3, message.chat.id)
+        )
+        db.execute("UPDATE users SET strike = ? WHERE id = ?", (0, message.chat.id))
+        db.execute(
+            f"UPDATE users SET save_status = ? WHERE id = ?", ("pause", message.chat.id)
+        )
         db.commit()
-        await message.answer("функция остановлена) "
-                             "когда снова захочешь получать от меня идеи для заметок, нажми /resume")
+        await message.answer(
+            "функция остановлена) "
+            "когда снова захочешь получать от меня идеи для заметок, нажми /resume"
+        )
 
 
 # --- хэндлер на команду /resume ---
@@ -558,7 +567,8 @@ async def cmd_resume(message: types.Message, state: FSMContext) -> None:
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=row)
         await state.set_state(Form.set_resume)
         await message.answer(
-            text=f"ты хочешь снова получать от меня идеи для заметок?", reply_markup=keyboard
+            text=f"ты хочешь снова получать от меня идеи для заметок?",
+            reply_markup=keyboard,
         )
     else:
         await message.answer(
@@ -741,7 +751,7 @@ async def change_timezone_confirmation(message: types.Message, timezone):
     )
     set_at_midnight = await timezone_converter(int(timezone[5:7]), 0)
     scheduler.reschedule_job(
-        job_id='night' + str(chat_id),
+        job_id="night" + str(chat_id),
         trigger="cron",
         hour=set_at_midnight,
         minute=0,
@@ -803,9 +813,7 @@ async def cmd_shop(message: types.Message, state: FSMContext) -> None:
     cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
     functions_code = cur.fetchone()[0]
     functions_code = functions_code.replace("1", "0")
-    db.execute(
-        "UPDATE users SET functions = ? WHERE id = ?", (functions_code, chat_id)
-    )
+    db.execute("UPDATE users SET functions = ? WHERE id = ?", (functions_code, chat_id))
     db.commit()
 
     menu = []
@@ -819,7 +827,7 @@ async def cmd_shop(message: types.Message, state: FSMContext) -> None:
     menu_keyboard = types.InlineKeyboardMarkup(inline_keyboard=menu)
     await message.answer(
         text="рад видеть тебя в магазине функций! ниже - функции и их цена. "
-             "нажми на ту, которую хочешь купить!",
+        "нажми на ту, которую хочешь купить!",
         reply_markup=menu_keyboard,
     )
     await state.set_state(Form.handle_function)
@@ -846,8 +854,14 @@ async def function_confirmation(message: types.Message, function):
     cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
     functions_code = cur.fetchone()[0]
 
-    status_dict = {"мемы": f"{functions_code[0]}", "анекдоты": f"{functions_code[1]}", "цитаты": f"{functions_code[2]}",
-                   "тестики": f"{functions_code[3]}", "музыка": f"{functions_code[4]}", f"{function}": "1"}
+    status_dict = {
+        "мемы": f"{functions_code[0]}",
+        "анекдоты": f"{functions_code[1]}",
+        "цитаты": f"{functions_code[2]}",
+        "тестики": f"{functions_code[3]}",
+        "музыка": f"{functions_code[4]}",
+        f"{function}": "1",
+    }
 
     new_code = f"{status_dict['мемы']}{status_dict['анекдоты']}{status_dict['цитаты']}{status_dict['тестики']}{status_dict['музыка']}"
     db.execute("UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id))
@@ -923,13 +937,17 @@ async def cmd_meme(message: types.Message):
         if image_path:
             photo = FSInputFile(image_path)
             await message.answer_photo(photo, caption="картиночка для тебя :з")
-            new_code = f'3{functions_code[1:]}'
-            db.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id, ))
+            new_code = f"3{functions_code[1:]}"
+            db.execute(
+                f"UPDATE users SET functions = ? WHERE id = ?",
+                (
+                    new_code,
+                    chat_id,
+                ),
+            )
             db.commit()
     elif functions_code[function_dict["meme"]["index"]] == "3":
-        await message.answer(
-            text="ты уже получал мем сегодня :)"
-        )
+        await message.answer(text="ты уже получал мем сегодня :)")
     else:
         await message.answer(
             text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop"
@@ -942,18 +960,30 @@ async def cmd_anec(message: types.Message):
     chat_id = message.chat.id
     cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
     functions_code = cur.fetchone()[0]
-    if functions_code[function_dict['anec']['index']] == '2':
-        f = open('anecdotes.txt', encoding='utf-8')
+    if functions_code[function_dict["anec"]["index"]] == "2":
+        f = open("anecdotes.txt", encoding="utf-8")
         anecs = f.readlines()
         anec = anecs[random.randrange(45)]
-        await bot.send_message(chat_id, text=f"держи анекдот дня:\n\n<b>{anec}</b>", parse_mode="HTML",)
-        new_code = f'{functions_code[0]}3{functions_code[2:]}'
-        db.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id,))
+        await bot.send_message(
+            chat_id,
+            text=f"держи анекдот дня:\n\n<b>{anec}</b>",
+            parse_mode="HTML",
+        )
+        new_code = f"{functions_code[0]}3{functions_code[2:]}"
+        db.execute(
+            f"UPDATE users SET functions = ? WHERE id = ?",
+            (
+                new_code,
+                chat_id,
+            ),
+        )
         db.commit()
     elif functions_code[function_dict["anec"]["index"]] == "3":
         await message.answer(text="ты уже получал анекдот сегодня :)")
     else:
-        await message.answer(text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop")
+        await message.answer(
+            text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop"
+        )
 
 
 # --- хэндлер на /quote ---
@@ -969,16 +999,20 @@ async def cmd_quote(message: types.Message):
         await bot.send_message(
             chat_id,
             text=f"цитата дня для тебя:\n\n<b>{quotes[number]}</b>\n"
-                 f"и помни: вместе мы стая.",
+            f"и помни: вместе мы стая.",
             parse_mode="HTML",
         )
-        new_code = f'{functions_code[:2]}3{functions_code[3:]}'
-        db.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id,))
+        new_code = f"{functions_code[:2]}3{functions_code[3:]}"
+        db.execute(
+            f"UPDATE users SET functions = ? WHERE id = ?",
+            (
+                new_code,
+                chat_id,
+            ),
+        )
         db.commit()
     elif functions_code[function_dict["quote"]["index"]] == "3":
-        await message.answer(
-            text="ты уже получал цитату сегодня :)"
-        )
+        await message.answer(text="ты уже получал цитату сегодня :)")
     else:
         await message.answer(
             text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop"
@@ -987,11 +1021,12 @@ async def cmd_quote(message: types.Message):
 
 def get_test():
     tests = []
-    with open ('tests.tsv', 'r', encoding='UTF-8') as tests_data:
-        data = csv.reader(tests_data, delimiter='\t')
+    with open("tests.tsv", "r", encoding="UTF-8") as tests_data:
+        data = csv.reader(tests_data, delimiter="\t")
         for line in data:
             tests.append(line)
     return random.choice(tests)
+
 
 @dp.message(Command("test"))
 async def cmd_test(message: types.Message):
@@ -1001,22 +1036,25 @@ async def cmd_test(message: types.Message):
     if functions_code[function_dict["test"]["index"]] == "2":
         test_path = get_test()
         if test_path:
-            knopka = InlineKeyboardButton(text=f'{get_test()[0]}', url=f'{get_test()[1]}')
+            knopka = InlineKeyboardButton(
+                text=f"{get_test()[0]}", url=f"{get_test()[1]}"
+            )
             knopki = [[knopka]]
             knopochka = types.InlineKeyboardMarkup(inline_keyboard=knopki)
 
-            await message.answer(
-                text='твой тестик на сегодня:',
-                reply_markup=knopochka
-            )
+            await message.answer(text="твой тестик на сегодня:", reply_markup=knopochka)
 
-            new_code = f'{functions_code[:3]}3{functions_code[4]}'
-            db.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id, ))
+            new_code = f"{functions_code[:3]}3{functions_code[4]}"
+            db.execute(
+                f"UPDATE users SET functions = ? WHERE id = ?",
+                (
+                    new_code,
+                    chat_id,
+                ),
+            )
             db.commit()
     elif functions_code[function_dict["test"]["index"]] == "3":
-        await message.answer(
-            text="ты уже проходил тестик сегодня:)"
-        )
+        await message.answer(text="ты уже проходил тестик сегодня:)")
     else:
         await message.answer(
             text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop"
@@ -1024,8 +1062,9 @@ async def cmd_test(message: types.Message):
 
 
 def get_music():
-    music = [y for y in os.listdir('music')]
-    return os.path.join('music', random.choice(music))
+    music = [y for y in os.listdir("music")]
+    return os.path.join("music", random.choice(music))
+
 
 @dp.message(Command("music"))
 async def cmd_music(message: types.Message):
@@ -1037,13 +1076,17 @@ async def cmd_music(message: types.Message):
         if music_path:
             audio = FSInputFile(music_path)
             await message.answer_audio(audio, caption="музыка для тебя :з")
-            new_code = f'{functions_code[:4]}3'
-            db.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id,))
+            new_code = f"{functions_code[:4]}3"
+            db.execute(
+                f"UPDATE users SET functions = ? WHERE id = ?",
+                (
+                    new_code,
+                    chat_id,
+                ),
+            )
             db.commit()
     elif functions_code[function_dict["music"]["index"]] == "3":
-        await message.answer(
-            text="ты уже получал музыку от меня сегодня :)"
-        )
+        await message.answer(text="ты уже получал музыку от меня сегодня :)")
     else:
         await message.answer(
             text=f"у тебя пока нет этой функции( купи её в магазине с помощью /shop"
@@ -1066,6 +1109,7 @@ async def cmd_dontknow(message: types.Message):
         "кажется, я тебя не понимаю( попробуй выбрать одну из доступных команд, нажав /commands"
     )
 
+
 async def timezone_converter(timezone, hours):
     if timezone < 3:
         send_time = (hours + (3 - timezone)) % 24
@@ -1077,11 +1121,18 @@ async def timezone_converter(timezone, hours):
             send_time = x
     return send_time
 
+
 async def newday(chat_id: int):
     cur.execute(f"SELECT functions FROM users WHERE id = ?", (chat_id,))
     functions_code = cur.fetchone()
-    new_code = functions_code[0].replace('3', '2')
-    cur.execute(f"UPDATE users SET functions = ? WHERE id = ?", (new_code, chat_id,))
+    new_code = functions_code[0].replace("3", "2")
+    cur.execute(
+        f"UPDATE users SET functions = ? WHERE id = ?",
+        (
+            new_code,
+            chat_id,
+        ),
+    )
     db.commit()
 
 
