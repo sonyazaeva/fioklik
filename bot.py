@@ -1112,11 +1112,44 @@ async def cmd_dontknow(message: types.Message):
     )
 
 
+async def repeater(db):
+    cur.execute("SELECT id FROM users")
+    rows = cur.fetchall()
+    for chat_id in rows:
+        if chat_id is not None:
+            cur.execute(f"SELECT time_hours FROM users WHERE id = ?", (chat_id[0],))
+            hours = cur.fetchone()[0]
+            cur.execute(f"SELECT time_mins FROM users WHERE id = ?", (chat_id[0],))
+            mins = cur.fetchone()[0]
+            cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id[0],))
+            timezone = cur.fetchone()[0]
+            send_time = await timezone_converter(int(timezone[5:7]), hours)
+            scheduler.add_job(
+                send_prompt,
+                trigger="cron",
+                hour=send_time,
+                minute=mins,
+                id=str(chat_id[0]),
+                kwargs={"bot": bot, "chat_id": chat_id[0]},
+            )
+
+            set_at_midnight = await timezone_converter(int(timezone[5:7]), 0)
+            scheduler.add_job(
+                new_day,
+                trigger="cron",
+                hour=set_at_midnight,
+                minute=00,
+                id='night' + str(chat_id),
+                kwargs={"chat_id": chat_id[0]},
+            )
+
+
+
 # --- запуск поллинга и расписания---
 async def main() -> None:
     scheduler.start()
+    await repeater(db)
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
