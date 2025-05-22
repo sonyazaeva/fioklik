@@ -16,7 +16,7 @@ import csv
 
 # --- привязываем код к тг ---
 logging.basicConfig(level=logging.INFO)  # базовые настройки для связи кода с тг
-TOKEN = "7844979667:AAEgyWBqPbAk6dyRZC0l5uV1lmMcM1_AZUw"
+TOKEN = "8165202855:AAEEzi3GheY3K26A4YEQ1Wpk-TQQDfBB_Bs"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
@@ -196,52 +196,50 @@ async def cmd_processtime(message: types.Message, state: FSMContext) -> None:
         hours, mins = map(int, message.text.split(":"))
         chat_id = message.chat.id
         await state.update_data(time_hours=hours, time_mins=mins)
-
-        if 0 <= hours < 24 and 0 <= mins < 60:
-            db.execute(f"UPDATE users SET time_hours = ? WHERE id = ?", (hours, chat_id))
-            db.execute(f"UPDATE users SET time_mins = ? WHERE id = ?", (mins, chat_id))
-            db.commit()
-        else:
-            await message.answer(
-                "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
-            )
-
-        cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
-        timezone = cur.fetchone()[0]
-        send_time = await timezone_converter(int(timezone[5:7]), hours)
-        scheduler.add_job(
-            send_prompt,
-            trigger="cron",
-            hour=send_time,
-            minute=mins,
-            id=str(chat_id),
-            kwargs={"bot": bot, "chat_id": chat_id},
-        )
-
-        set_at_midnight = await timezone_converter(int(timezone[5:7]), 0)
-        scheduler.add_job(
-            newday,
-            trigger="cron",
-            hour=set_at_midnight,
-            minute=00,
-            id='night' + str(chat_id),
-            kwargs={"chat_id": chat_id},
-        )
-
-        await message.answer(
-            f"отлично, теперь каждый день в <b>{message.text}</b> я буду присылать тебе идею для заметки о прошедшем дне) "
-            f"не забывай отвечать мне, чтобы зарабатывать баллы для открытия новых функций!\n\n"
-            f"рад, что мы познакомились! вот, что я теперь о тебе знаю:",
-            parse_mode="HTML",
-        )
-        await cmd_account(message)
-        await cmd_commands(message)
-        await cmd_info(message)
-        await state.set_state(Form.time_set)
     except ValueError:
         await message.answer(
             "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
         )
+
+    if 0 <= hours < 24 and 0 <= mins < 60:
+        db.execute(f"UPDATE users SET time_hours = ? WHERE id = ?", (hours, chat_id))
+        db.execute(f"UPDATE users SET time_mins = ? WHERE id = ?", (mins, chat_id))
+        db.commit()
+    else:
+        await message.answer("пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера")
+
+    cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
+    timezone = cur.fetchone()[0]
+    send_time = await timezone_converter(int(timezone[5:7]), hours)
+    scheduler.add_job(
+        send_prompt,
+        trigger="cron",
+        hour=send_time,
+        minute=mins,
+        id=str(chat_id),
+        kwargs={"bot": bot, "chat_id": chat_id},
+    )
+
+    set_at_midnight = await timezone_converter(int(timezone[5:7]), 0)
+    scheduler.add_job(
+        newday,
+        trigger="cron",
+        hour=set_at_midnight,
+        minute=00,
+        id='night' + str(chat_id),
+        kwargs={"chat_id": chat_id},
+    )
+
+    await message.answer(
+        f"отлично, теперь каждый день в <b>{message.text}</b> я буду присылать тебе идею для заметки о прошедшем дне) "
+        f"не забывай отвечать мне, чтобы зарабатывать баллы для открытия новых функций!\n\n"
+        f"рад, что мы познакомились! держи стикерпак в честь знакомства: https://t.me/addstickers/fioklik :)",
+        parse_mode="HTML",
+    )
+    await cmd_account(message)
+    await cmd_commands(message)
+    await cmd_info(message)
+    await state.set_state(Form.time_set)
 
 
 # --- хэндлер на команду /account ---
@@ -265,6 +263,7 @@ async def cmd_account(message: types.Message) -> None:
     func = await cmd_available_func(message)
     if acc:
         await message.answer(
+            f"вот что я тебе знаю :)\n\n"
             f"твой юзернейм: <b>{acc[0]}</b>\n"
             f"твой баланс: <b>{points[0]}</b>\n"
             f"твой страйк: <b>{strike[0]}</b>\n"
@@ -664,34 +663,34 @@ async def cmd_processchangedtime(message: types.Message, state: FSMContext):
     try:
         hours, mins = map(int, message.text.split(":"))
         await state.update_data(time_hours=hours, time_mins=mins)
-        if 0 <= hours < 24 and 0 <= mins < 60:
-            db.execute(f"UPDATE users SET time_hours = ? WHERE id = ?", (hours, chat_id))
-            db.execute(f"UPDATE users SET time_mins = ? WHERE id = ?", (mins, chat_id))
-            db.commit()
-        else:
-            await message.answer(
-                "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
-            )
-
-        cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
-        timezone = cur.fetchone()[0]
-        send_time = await timezone_converter(int(timezone[5:7]), hours)
-        scheduler.reschedule_job(
-            job_id=str(chat_id),
-            trigger="cron",
-            hour=send_time,
-            minute=mins,
-        )
-
-        await message.answer(
-            f"ура! в следующий раз я пришлю тебе идею для заметки уже в <b>{message.text}</b>)",
-            parse_mode="HTML",
-        )
-        await state.clear()
     except ValueError:
         await message.answer(
             "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
         )
+    if 0 <= hours < 24 and 0 <= mins < 60:
+        db.execute(f"UPDATE users SET time_hours = ? WHERE id = ?", (hours, chat_id))
+        db.execute(f"UPDATE users SET time_mins = ? WHERE id = ?", (mins, chat_id))
+        db.commit()
+    else:
+        await message.answer(
+            "пожалуйста, введи время в правильном формате, например 06:00 для утра или 18:00 для вечера"
+        )
+
+    cur.execute(f"SELECT timezone FROM users WHERE id = ?", (chat_id,))
+    timezone = cur.fetchone()[0]
+    send_time = await timezone_converter(int(timezone[5:7]), hours)
+    scheduler.reschedule_job(
+        job_id=str(chat_id),
+        trigger="cron",
+        hour=send_time,
+        minute=mins,
+    )
+
+    await message.answer(
+        f"ура! в следующий раз я пришлю тебе идею для заметки уже в <b>{message.text}</b>)",
+        parse_mode="HTML",
+    )
+    await state.clear()
 
 
 # --- хэндлер на команду change_timezone ---
